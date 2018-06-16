@@ -9,7 +9,7 @@ fn buffer_to_cstr(buffer: &[u8]) -> Result<&CStr, FromBytesWithNulError> {
 }
 
 #[repr(packed)]
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct Header {
     pub version:  [u8; 12],
     _pad1:        u8,
@@ -19,6 +19,7 @@ pub struct Header {
 }
 
 #[repr(packed)]
+#[derive(Copy, Clone)]
 pub struct Actor {
     pub id:          u64,
     pub proffession: u32,
@@ -44,6 +45,7 @@ impl Actor {
 }
 
 #[repr(packed)]
+#[derive(Copy, Clone)]
 pub struct Skill {
     pub id: u32,
     name:   [u8; 64],
@@ -114,6 +116,15 @@ pub struct Evtc {
     pub events: Vec<CombatEvent>,
 }
 
+#[derive(Debug)]
+#[derive(Copy, Clone)]
+pub struct EvtcBuf<'a> {
+    pub header: &'a Header,
+    pub actors: &'a [Actor],
+    pub skills: &'a [Skill],
+    pub events: &'a [CombatEvent],
+}
+
 fn read_struct<T, U: io::Read>(mut buffer: U) -> Result<T, io::Error> {
     let mut t: T = unsafe { mem::zeroed() };
     let size     = mem::size_of::<T>();
@@ -129,6 +140,37 @@ fn read_struct<T, U: io::Read>(mut buffer: U) -> Result<T, io::Error> {
     }
 
     Ok(t)
+}
+
+fn transmute_single<T: Copy>(buf: &[u8]) -> Option<(&T, &[u8])> {
+    if buf.len() < mem::size_of::<T>() {
+        return None;
+    }
+
+    Some((unsafe { mem::transmute(buf.as_ptr()) }, &buf[mem::size_of::<T>()..]))
+}
+
+fn transmute_slice<T: Copy>(buf: &[u8], cnt: usize) -> Option<(&[T], &[u8])> {
+    if buf.len() < mem::size_of::<T>() * cnt {
+        return None;
+    }
+
+    Some((unsafe { slice::from_raw_parts(buf.as_ptr() as *const T, cnt) }, &buf[mem::size_of::<T>() * cnt..]))
+}
+
+pub fn transmute(buffer: &[u8]) -> EvtcBuf {
+    let (header, buffer)     = transmute_single::<Header>(buffer).unwrap();
+    let (actors, buffer)     = transmute_slice(buffer, header.actors as usize).unwrap();
+    let (num_skills, buffer) = transmute_single::<u32>(buffer).unwrap();
+    let (skills, buffer)     = transmute_slice(buffer, *num_skills as usize).unwrap();
+    let (events, _buffer)    = transmute_slice(buffer, buffer.len() / mem::size_of::<CombatEvent>()).unwrap();
+
+    EvtcBuf {
+        header,
+        actors,
+        skills,
+        events,
+    }
 }
 
 pub fn read<T: io::Read>(mut buffer: T) -> Result<Evtc, io::Error> {
