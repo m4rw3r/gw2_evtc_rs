@@ -4,4 +4,5 @@ version = "0.1.0"
 authors = ["Martin Wernstål <m4rw3r@gmail.com>"]
 
 [dependencies]
-specs = "0.10.0"
+memmap = "0.6.2"
+rayon = "1.0.0"

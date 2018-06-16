@@ -1,60 +1,16 @@
 extern crate evtc;
-extern crate specs;
+extern crate memmap;
+extern crate rayon;
 
-use std::collections::HashMap;
 use std::fs::File;
-use std::mem;
 use std::env;
-use specs::{DispatcherBuilder, Join};
-
-#[derive(Debug, Eq, PartialEq)]
-struct Id(u64);
-
-impl specs::Component for Id {
-    type Storage = specs::VecStorage<Self>;
-}
-
-#[derive(Debug)]
-struct Name(String);
-
-impl specs::Component for Name {
-    type Storage = specs::VecStorage<Self>;
-}
-
-#[derive(Debug)]
-struct IncomingEvents(Vec<evtc::raw::CombatEvent>);
-
-impl specs::Component for IncomingEvents {
-    type Storage = specs::VecStorage<Self>;
-}
-
-#[derive(Debug)]
-struct OutgoingEvents(Vec<evtc::raw::CombatEvent>);
-
-impl specs::Component for OutgoingEvents {
-    type Storage = specs::VecStorage<Self>;
-}
-
-#[derive(Debug, Copy, Clone)]
-struct Time(u64);
-
-impl specs::Component for Time {
-    type Storage = specs::VecStorage<Self>;
-}
-
-#[derive(Debug, Copy, Clone)]
-struct DeltaTime(u64);
-
-impl specs::Component for DeltaTime {
-    type Storage = specs::VecStorage<Self>;
-}
 
 #[derive(Debug, Copy, Clone)]
 struct Quickness([u64; 5]);
 
-impl specs::Component for Quickness {
-    type Storage = specs::VecStorage<Self>;
-}
+//impl specs::Component for Quickness {
+//    type Storage = specs::VecStorage<Self>;
+//}
 
 impl Default for Quickness {
     fn default() -> Self {
@@ -90,7 +46,7 @@ impl Quickness {
     }
 }
 
-struct QuicknessSystem;
+/*struct QuicknessSystem;
 
 impl<'a> specs::System<'a> for QuicknessSystem {
     type SystemData = (specs::Fetch<'a, DeltaTime>, specs::WriteStorage<'a, Quickness>);
@@ -117,123 +73,68 @@ impl<'a> specs::System<'a> for QuicknessAdditionSystem {
         }
     }
 }
+*/
 
-struct Logger;
+trait Task {
+    fn parse(&mut self, time: u64, delta: u64, event: evtc::raw::CombatEvent);
 
-impl<'a> specs::System<'a> for Logger {
-    type SystemData = (specs::Fetch<'a, Time>, specs::ReadStorage<'a, Name>, specs::ReadStorage<'a, Quickness>);
+    fn parse_events<I: Iterator<Item=evtc::raw::CombatEvent>>(&mut self, mut events: I) {
+        if let Some(first) = events.next() {
+            let mut time   = first.time;
+            let mut delta  = 0;
 
-    fn run(&mut self, (time, name, quick): Self::SystemData) {
-        for (n, q) in (&name, &quick).join() {
-            if q.stacks() > 0 {
-                println!("{}, {}, {}", time.0, n.0, q.stacks());
+            self.parse(time, delta, first);
+
+            for e in events {
+                if e.time != time {
+                    delta = e.time - time;
+                    time  = e.time;
+                }
+                else {
+                    delta = 0
+                }
+
+                self.parse(time, delta, e);
             }
         }
     }
 }
 
-fn create_dispatcher<'a, 'b>(evtc: &evtc::raw::Evtc) -> specs::Dispatcher<'a, 'b> {
-    let mut builder = DispatcherBuilder::new()
-        // Basic systems which operate independently of input
-        .add(QuicknessSystem, "quickness", &[]);
+struct BuffApplications {
+    agent:    u64,
+    skill_id: u16,
+    events:   Vec<evtc::raw::CombatEvent>,
+}
 
-    for s in &evtc.skills {
-        // TODO: More buffs
-        if s.name() == "Quickness" {
-            builder = builder.add(QuicknessAdditionSystem(s.id as u16), "quickness_add", &["quickness"]);
-        }
+#[derive(Debug)]
+struct SumValue(i64);
+
+impl Default for SumValue {
+    fn default() -> Self {
+        SumValue(0)
     }
+}
 
-    builder = builder.add(Logger, "logger", &["quickness", "quickness_add"]);
-
-    builder.build()
+impl Task for SumValue {
+    fn parse(&mut self, _time: u64, _delta: u64, event: evtc::raw::CombatEvent) {
+        self.0 += event.value as i64;
+    }
 }
 
 fn main() {
     let file = File::open(env::args().nth(1).expect("missing argument to executable")).expect("could not open file");
+    let mmap = unsafe { memmap::Mmap::map(&file).unwrap() };
+    let evtc = evtc::raw::transmute(&mmap[..]);
 
-    let evtc = evtc::raw::read(file).expect("Failed reading EVTC file");
+    rayon::scope(|s| {
+        for a in evtc.actors {
+            s.spawn(move |_| {
+                let mut damage = SumValue::default();
 
-    let mut world = specs::World::new();
-    let mut inc_event_queue = HashMap::new();
-    let mut out_event_queue = HashMap::new();
+                damage.parse_events(evtc.events.iter().cloned().filter(|e| e.src_agent == a.id && ! e.is_buff()));
 
-    world.register::<Id>();
-    world.register::<Name>();
-    world.register::<IncomingEvents>();
-    world.register::<OutgoingEvents>();
-    world.register::<Quickness>();
-
-    let mut dispatcher = create_dispatcher(&evtc);
-
-    for a in evtc.actors {
-        let entity_id = world.create_entity()
-            .with(Id(a.id))
-            .with(Name(a.name()))
-            .with(Quickness::default())
-            // TODO: Should not be necessary, it should be initialized/removed?
-            .build();
-
-        println!("{:?}", a);
-
-        out_event_queue.insert(a.id, (entity_id, Vec::new()));
-        inc_event_queue.insert(a.id, (entity_id, Vec::new()));
-    }
-
-    /*let mut evtc_reader = EvtcReaderSystem;
-
-    evtc_reader.run_now(&world.res);*/
-
-    let mut time   = evtc.events.first().expect("EVTC log is empty").time;
-    let mut events = evtc.events.iter();
-    let mut ticks  = 0;
-    let mut delta  = 0;
-
-    while let Some(e) = events.next() {
-        if e.time != time {
-            world.write::<IncomingEvents>().clear();
-            world.write::<OutgoingEvents>().clear();
-
-            for &mut(id, ref mut v) in inc_event_queue.values_mut() {
-                if v.is_empty() {
-                    continue;
-                }
-
-                let w = mem::replace(v, Vec::new());
-
-                world.write().insert(id, IncomingEvents(w));
-            }
-
-            for &mut(id, ref mut v) in out_event_queue.values_mut() {
-                if v.is_empty() {
-                    continue;
-                }
-
-                let w = mem::replace(v, Vec::new());
-
-                world.write().insert(id, OutgoingEvents(w));
-            }
-
-            world.add_resource(Time(time));
-            world.add_resource(DeltaTime(delta));
-
-            dispatcher.dispatch(&world.res);
-            world.maintain();
-
-            ticks += 1;
-
-            delta = e.time - time;
-            time  = e.time;
+                println!("{:?} {:?}", a.name(), damage.0);
+            })
         }
-
-        if let Some(ref mut v) = inc_event_queue.get_mut(&e.dst_agent) {
-            v.1.push(e.clone());
-        }
-
-        if let Some(ref mut v) = out_event_queue.get_mut(&e.src_agent) {
-            v.1.push(e.clone());
-        }
-    }
-
-    println!("Processed ticks {}", ticks);
+    })
 }

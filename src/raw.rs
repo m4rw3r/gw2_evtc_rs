@@ -32,7 +32,8 @@ pub struct Actor {
 
 impl fmt::Debug for Actor {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Actor({}, {}, profession: {}, is_elite: {}, toughness: {}, healing: {}, condition: {})", self.id, self.name(), self.proffession, self.is_elite, self.toughness, self.healing, self.condition)
+        write!(f, "Actor({}, {}, profession: {}, is_elite: {}, toughness: {}, healing: {}, condition: {})",
+            {self.id}, self.name(), {self.proffession}, {self.is_elite}, {self.toughness}, {self.healing}, {self.condition})
     }
 }
 
@@ -53,7 +54,7 @@ pub struct Skill {
 
 impl fmt::Debug for Skill {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Skill({}, {})", self.id, self.name())
+        write!(f, "Skill({}, {})", {self.id}, self.name())
     }
 }
 
@@ -103,6 +104,7 @@ pub struct CombatEvent {
 }
 
 impl CombatEvent {
+    #[inline]
     pub fn is_buff(&self) -> bool {
         self.buff > 0
     }
