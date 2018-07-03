@@ -1,5 +1,75 @@
+use std::u64;
+use std::collections::HashMap;
 
 pub mod raw;
+
+#[derive(Debug, Clone)]
+struct AgentMetadata {
+    instid:        u16,
+    first_aware:   u64,
+    last_aware:    u64,
+    master_instid: u16,
+    master_agent:  u64,
+}
+
+impl Default for AgentMetadata {
+    fn default() -> Self {
+        AgentMetadata {
+            instid:        0,
+            first_aware:   0,
+            last_aware:    u64::MAX,
+            master_instid: 0,
+            master_agent:  0,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Metadata {
+    agent_data: HashMap<u64, AgentMetadata>,
+}
+
+impl Metadata {
+    pub fn new(buffer: &raw::EvtcBuf) -> Self {
+        let mut map = HashMap::<u64, AgentMetadata>::with_capacity(buffer.agents.len());
+
+        for e in buffer.events.iter() {
+            let master_agent = if e.src_master_instid != 0 {
+                // TODO: Maybe check so our parent hasn't died yet? idk
+                // FIXME: This does not seem to work properly
+                map.iter().find(|(_id, m)| m.instid == e.src_master_instid /*&& m.first_aware < e.time*/).map(|(&id, _)| id)
+            } else { None };
+
+            let mut meta = map.entry(e.src_agent).or_insert(AgentMetadata {
+                instid:        0,
+                first_aware:   e.time,
+                last_aware:    e.time,
+                master_instid: 0,
+                master_agent:  0,
+            });
+
+            // Apparently if it is not a combat-state-change then it is wrong
+            if e.is_statechange != raw::CombatStateChange::None {
+                meta.instid = e.src_instid;
+            }
+
+            meta.last_aware = e.time;
+
+            if e.src_master_instid != 0 {
+                meta.master_instid = e.src_master_instid;
+                meta.master_agent  = master_agent.unwrap_or(meta.master_agent);
+            }
+        }
+
+        for v in map.values().filter(|v| v.master_instid != 0 || v.master_agent != 0) {
+            println!("{:?}", v);
+        }
+
+        Metadata {
+            agent_data: map,
+        }
+    }
+}
 
 #[derive(Debug, Copy, Clone)]
 pub struct Quickness([u64; 5]);

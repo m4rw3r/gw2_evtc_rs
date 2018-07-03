@@ -106,6 +106,11 @@ fn main() {
     let mmap = unsafe { memmap::Mmap::map(&file).unwrap() };
     let evtc = evtc::raw::transmute(&mmap[..]);
 
+    let meta = evtc::Metadata::new(&evtc);
+
+/*
+    println!("{:?}", meta);
+
     rayon::scope(|s| {
         for a in evtc.agents {
             s.spawn(move |_| {
@@ -120,4 +125,5 @@ fn main() {
             })
         }
     })
+    */
 }

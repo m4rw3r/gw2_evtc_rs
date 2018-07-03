@@ -70,7 +70,7 @@ impl Skill {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IFF {
     Friend  = 0,
     Foe     = 1,
@@ -78,7 +78,7 @@ pub enum IFF {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CombatResult {
     // good physical hit
     Normal      = 0, 
@@ -101,7 +101,7 @@ pub enum CombatResult {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CombatActivation {
     // Not used - not this kind of event
     None       = 0,
@@ -118,7 +118,7 @@ pub enum CombatActivation {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CombatStateChange {
     // not used - not this kind of event
     None            = 0,
@@ -165,7 +165,7 @@ pub enum CombatStateChange {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CombatBuffRemove {
     // Not used - not this kind of event
     None   = 0,
