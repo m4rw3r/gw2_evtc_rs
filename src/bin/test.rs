@@ -7,6 +7,8 @@ use std::env;
 use std::marker::PhantomData;
 use std::ops::AddAssign;
 
+use evtc::Event;
+
 trait Task: Default {
     fn parse_event(&mut self, time: u64, delta: u64, event: &evtc::raw::CombatEvent);
 
@@ -14,15 +16,15 @@ trait Task: Default {
       where I: 'a,
             I: 'a + Iterator<Item=&'a evtc::raw::CombatEvent> {
         if let Some(first) = events.next() {
-            let mut time   = first.time;
+            let mut time   = first.time();
             let mut delta  = 0;
 
             self.parse_event(time, delta, first);
 
             for e in events {
-                if e.time != time {
-                    delta = e.time - time;
-                    time  = e.time;
+                if e.time() != time {
+                    delta = e.time() - time;
+                    time  = e.time();
                 }
                 else {
                     delta = 0
@@ -62,7 +64,7 @@ impl Default for SumValue {
 
 impl Task for SumValue {
     fn parse_event(&mut self, _time: u64, _delta: u64, event: &evtc::raw::CombatEvent) {
-        self.0 += event.value as i64;
+        self.0 += event.value();
     }
 }
 
@@ -97,7 +99,7 @@ impl Property for Value {
     type Type = i64;
 
     fn get_data(event: &evtc::raw::CombatEvent) -> Self::Type {
-        event.value as i64
+        event.value()
     }
 }
 
@@ -106,7 +108,12 @@ fn main() {
     let mmap = unsafe { memmap::Mmap::map(&file).unwrap() };
     let evtc = evtc::raw::transmute(&mmap[..]);
 
-    let meta = evtc::Metadata::new(&evtc);
+    let meta    = evtc::Metadata::new(&evtc);
+    // let mut ops = Vec::new();
+
+    for a in meta.agents().iter() {
+        println!("{} {}", a.name(), evtc.events.iter().filter(|e| e.targeting_agent(a) && e.is_boon()).count());
+    }
 
 /*
     println!("{:?}", meta);

@@ -1,74 +1,282 @@
-use std::u64;
-use std::collections::HashMap;
 
 pub mod raw;
 
+use std::u64;
+use std::fmt;
+use std::collections::HashMap;
+
+use raw::CombatStateChange;
+use raw::IFF;
+
+/*
+// TODO: Group the common stuff
+pub struct Event {
+    time:      u64,
+    src_agent: u64,
+    dst_agent: u64,
+}
+
+impl Event {
+    fn from_combat_event(e: raw::CombatEvent) -> Self {
+        let type = e.event_type();
+
+        Event {
+            time:      e.time,
+            // For buff-remove events, the target is the source and reverse
+            src_agent: if type == raw::EventType::BuffRemove { e.dst_agent } else { e.src_agent },
+            dst_agent: if type == raw::EventType::BuffRemove { e.src_agent } else { e.dst_agent },
+        }
+    }
+}
+*/
+
+#[derive(Debug, Clone)]
+pub struct Agent {
+    // Agent address
+    inner: raw::Agent,
+    meta:  AgentMetadata,
+}
+
+impl PartialEq for Agent {
+    fn eq(&self, other: &Agent) -> bool {
+        self.inner.id() == other.inner.id()
+    }
+}
+
+impl Agent {
+    pub fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    pub fn account_name(&self) -> &str {
+        self.inner.account_name()
+    }
+
+    pub fn subgroup(&self) -> &str {
+        self.inner.subgroup()
+    }
+}
+
+/*
+impl<I> EventsFilter for I
+  where I: Iterator<Item=&raw::CombatEvent> {
+}
+*/
+
 #[derive(Debug, Clone)]
 struct AgentMetadata {
-    instid:        u16,
+    // Agent instance id
+    instid:        InstanceId,
+    // Time when first observed
     first_aware:   u64,
+    // Time when last observed
     last_aware:    u64,
-    master_instid: u16,
-    master_agent:  u64,
+    // Owning instance id
+    master_instid: InstanceId,
+    // Owning address
+    master_agent:  AgentId,
 }
 
 impl Default for AgentMetadata {
     fn default() -> Self {
         AgentMetadata {
-            instid:        0,
+            instid:        InstanceId::empty(),
             first_aware:   0,
             last_aware:    u64::MAX,
-            master_instid: 0,
-            master_agent:  0,
+            master_instid: InstanceId::empty(),
+            master_agent:  AgentId::empty(),
         }
     }
 }
 
 #[derive(Debug)]
 pub struct Metadata {
-    agent_data: HashMap<u64, AgentMetadata>,
+    agents: Vec<Agent>,
+    // agent_data: HashMap<u64, AgentMetadata>,
 }
 
 impl Metadata {
     pub fn new(buffer: &raw::EvtcBuf) -> Self {
-        let mut map = HashMap::<u64, AgentMetadata>::with_capacity(buffer.agents.len());
+        let mut map = HashMap::<AgentId, AgentMetadata>::with_capacity(buffer.agents.len());
 
         for e in buffer.events.iter() {
-            let master_agent = if e.src_master_instid != 0 {
+            let master_agent = if e.master_source_instance() != InstanceId::empty() {
                 // TODO: Maybe check so our parent hasn't died yet? idk
                 // FIXME: This does not seem to work properly
-                map.iter().find(|(_id, m)| m.instid == e.src_master_instid /*&& m.first_aware < e.time*/).map(|(&id, _)| id)
+                map.iter().find(|(_id, m)| m.instid == e.master_source_instance() /*&& m.first_aware < e.time*/).map(|(&id, _)| id)
             } else { None };
 
-            let mut meta = map.entry(e.src_agent).or_insert(AgentMetadata {
-                instid:        0,
-                first_aware:   e.time,
-                last_aware:    e.time,
-                master_instid: 0,
-                master_agent:  0,
+            let mut meta = map.entry(e.source_agent()).or_insert(AgentMetadata {
+                instid:        InstanceId::empty(),
+                first_aware:   e.time(),
+                last_aware:    e.time(),
+                master_instid: InstanceId::empty(),
+                master_agent:  AgentId::empty(),
             });
 
             // Apparently if it is not a combat-state-change then it is wrong
-            if e.is_statechange != raw::CombatStateChange::None {
-                meta.instid = e.src_instid;
+            if e.event_type() == EventType::StateChange {
+                meta.instid = e.source_instance();
             }
 
-            meta.last_aware = e.time;
+            meta.last_aware = e.time();
 
-            if e.src_master_instid != 0 {
-                meta.master_instid = e.src_master_instid;
+            if e.master_source_instance() != InstanceId::empty() {
+                meta.master_instid = e.master_source_instance();
                 meta.master_agent  = master_agent.unwrap_or(meta.master_agent);
             }
         }
 
-        for v in map.values().filter(|v| v.master_instid != 0 || v.master_agent != 0) {
+        for v in map.values().filter(|v| (v.master_instid != InstanceId::empty()) ^ (v.master_agent != AgentId::empty())) {
             println!("{:?}", v);
         }
 
         Metadata {
-            agent_data: map,
+            agents: buffer.agents.iter().map(|agent| Agent {
+                inner: *agent,
+                meta:  map.get(&{agent.id}).map(|m| m.clone()).unwrap_or(Default::default()),
+            }).collect(),
         }
     }
+
+    pub fn agents(&self) -> &[Agent] {
+        &self.agents
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+pub enum EventType {
+    StateChange,
+    Activation,
+    BuffRemove,
+    BuffApplication,
+    PhysicalHit,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
+pub struct AgentId(u64);
+
+impl fmt::Display for AgentId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "#{}", self.0)
+    }
+}
+
+impl Default for AgentId {
+    fn default() -> Self {
+        AgentId::empty()
+    }
+}
+
+impl AgentId {
+    #[inline(always)]
+    pub fn empty() -> Self {
+        AgentId(0)
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
+pub struct InstanceId(u16);
+
+impl fmt::Display for InstanceId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{{{}}}", self.0)
+    }
+}
+
+impl Default for InstanceId {
+    fn default() -> Self {
+        InstanceId::empty()
+    }
+}
+
+impl InstanceId {
+    #[inline(always)]
+    pub fn empty() -> Self {
+        InstanceId(0)
+    }
+}
+
+pub trait Event {
+    #[inline]
+    fn time(&self) -> u64;
+
+    #[inline]
+    fn event_type(&self) -> EventType;
+
+    #[inline]
+    fn source_agent(&self) -> AgentId;
+
+    // TODO: Maybe option?
+    #[inline]
+    fn target_agent(&self) -> AgentId;
+
+    // TODO: Maybe option?
+    #[inline]
+    fn target_instance(&self) -> InstanceId;
+
+    // TODO: Maybe option?
+    #[inline]
+    fn source_instance(&self) -> InstanceId;
+
+    // TODO: Maybe option?
+    #[inline]
+    fn master_source_instance(&self) -> InstanceId;
+
+    // TODO
+
+    // TODO: Typesafe this
+    #[inline]
+    fn value(&self) -> i64;
+
+    // TODO: Maybe option?
+    #[inline]
+    fn buff_damage(&self) -> i64;
+
+    #[inline]
+    fn state_change(&self) -> CombatStateChange;
+
+    #[inline]
+    fn targeting_agent(&self, agent: &Agent) -> bool {
+        match self.state_change() {
+            CombatStateChange::EnterCombat
+            | CombatStateChange::HealthUpdate
+            | CombatStateChange::WeapSwap
+            | CombatStateChange::MaxHealthUpdate
+            | CombatStateChange::Reward
+            | CombatStateChange::Position
+            | CombatStateChange::Velocity => false,
+            _ => self.target_agent() == {agent.inner.id},
+        }
+    }
+
+    #[inline]
+    fn from_agent(&self, agent: &Agent) -> bool {
+        match self.state_change() {
+            CombatStateChange::LogStart
+            | CombatStateChange::LogEnd
+            | CombatStateChange::Language
+            | CombatStateChange::ShardId
+            | CombatStateChange::GwBuild => false,
+            _ => self.source_agent() == {agent.inner.id},
+        }
+    }
+
+    #[inline]
+    fn is_boon(&self) -> bool {
+        match self.event_type() {
+            EventType::BuffRemove      => true,
+            EventType::BuffApplication => self.buff_damage() == 0,
+            _                          => false
+        }
+    }
+
+/*
+    #[inline]
+    fn is_physica_damage(&self) -> bool {
+        self.target_instance() != InstanceId::empty() && self.event_type() == EventType::PhysicalHit && self.iff() == IFF::Foe
+    }
+    */
 }
 
 #[derive(Debug, Copy, Clone)]

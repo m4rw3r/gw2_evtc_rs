@@ -1,7 +1,21 @@
+
+use AgentId;
+use InstanceId;
+use Event;
+use EventType;
+
 use std::fmt;
 use std::mem;
 use std::slice;
 use std::str;
+
+/// Array of unlisted skills which are not part of the evtc-file
+static UNLISTED_SKILLS: &'static [Skill] = &[
+    Skill { id: 1066,  name: *b"Resurrect\0                                                      "},
+    Skill { id: 1175,  name: *b"Bandage\0                                                        "},
+    Skill { id: 65001, name: *b"Dodge\0                                                          "},
+    // TODO: Add boss-specific skills
+];
 
 #[repr(packed)]
 #[derive(Debug, Copy, Clone)]
@@ -16,7 +30,7 @@ pub struct Header {
 #[repr(packed)]
 #[derive(Copy, Clone)]
 pub struct Agent {
-    pub id:          u64,
+    pub id:          AgentId,
     pub proffession: u32,
     pub is_elite:    u32,
     pub toughness:   u32,
@@ -34,19 +48,23 @@ impl fmt::Debug for Agent {
 }
 
 impl Agent {
+    pub fn id(&self) -> AgentId {
+        self.id
+    }
+
     pub fn name(&self) -> &str {
         // All agent and skill names use UTF8 according to deltaconnected
-        unsafe { str::from_utf8_unchecked(self.name.split(|&c| c == 0).next().expect("Invalid C-string in EVTC Skill data")) }
+        unsafe { str::from_utf8_unchecked(self.name.split(|&c| c == 0).next().expect("Invalid C-string in EVTC Actor data")) }
     }
 
     pub fn account_name(&self) -> &str {
         // All agent and skill names use UTF8 according to deltaconnected
-        unsafe { str::from_utf8_unchecked(self.name.split(|&c| c == 0).nth(1).expect("Invalid C-string in EVTC Skill data")) }
+        unsafe { str::from_utf8_unchecked(self.name.split(|&c| c == 0).nth(1).expect("Invalid C-string in EVTC Actor data")) }
     }
 
     pub fn subgroup(&self) -> &str {
         // All agent and skill names use UTF8 according to deltaconnected
-        unsafe { str::from_utf8_unchecked(self.name.split(|&c| c == 0).nth(2).expect("Invalid C-string in EVTC Skill data")) }
+        unsafe { str::from_utf8_unchecked(self.name.split(|&c| c == 0).nth(2).expect("Invalid C-string in EVTC Actor data")) }
     }
 }
 
@@ -125,43 +143,43 @@ pub enum CombatStateChange {
     // src_agent entered combat, dst_agent is subgroup
     EnterCombat     = 1,
     // src_agent left combat
-    ExitCombat      = 2, 
+    ExitCombat      = 2,
     // src_agent is now alive
-    ChangeUp        = 3, 
+    ChangeUp        = 3,
     // src_agent is now dead
-    ChangeDead      = 4, 
+    ChangeDead      = 4,
     // src_agent is now downed
-    ChangeDown      = 5, 
+    ChangeDown      = 5,
     // src_agent is now in game tracking range
-    Spawn           = 6, 
+    Spawn           = 6,
     // src_agent is no longer being tracked
-    Despawn         = 7, 
+    Despawn         = 7,
     // src_agent has reached a health marker. dst_agent = percent * 10000 (eg. 99.5% will be 9950)
-    HealthUpdate    = 8, 
+    HealthUpdate    = 8,
     // log start. value = server unix timestamp **uint32**. buff_dmg = local unix timestamp. src_agent = 0x637261 (arcdps id)
-    LogStart        = 9, 
+    LogStart        = 9,
     // log end. value = server unix timestamp **uint32**. buff_dmg = local unix timestamp. src_agent = 0x637261 (arcdps id)
-    LogEnd          = 10, 
+    LogEnd          = 10,
     // src_agent swapped weapon set. dst_agent = current set id (0/1 water, 4/5 land)
-    WeapSwap        = 11, 
+    WeapSwap        = 11,
     // src_agent has had it's maximum health changed. dst_agent = new max health
-    MaxHealthUpdate = 12, 
+    MaxHealthUpdate = 12,
     // src_agent will be agent of "recording" player
-    PointOfView     = 13, 
+    PointOfView     = 13,
     // src_agent will be text language
-    Language        = 14, 
+    Language        = 14,
     // src_agent will be game build
-    GwBuild         = 15, 
+    GwBuild         = 15,
     // src_agent will be sever shard id
-    ShardId         = 16, 
+    ShardId         = 16,
     // src_agent is self, dst_agent is reward id, value is reward type. these are the wiggly boxes that you get
-    Reward          = 17, 
+    Reward          = 17,
     // combat event that will appear once per buff per agent on logging start (zero duration, buff==18)
-    BuffInitial     = 18, 
+    BuffInitial     = 18,
     // src_agent changed, cast float* p = (float*)&dst_agent, access as x/y/z (float[3])
-    Position        = 19, 
+    Position        = 19,
     // src_agent changed, cast float* v = (float*)&dst_agent, access as x/y/z (float[3])
-    Velocity        = 20, 
+    Velocity        = 20,
 }
 
 #[repr(u8)]
@@ -177,56 +195,121 @@ pub enum CombatBuffRemove {
     Manual = 3,
 }
 
+// TODO: Implement all public stuff as a trait
 #[repr(packed)]
 #[derive(Debug, Clone, Copy)]
 pub struct CombatEvent {
     // timegettime() at time of event
-    pub time:              u64,
+    time:              u64,
     // Unique identifier
-    pub src_agent:         u64,
+    src_agent:         AgentId,
     // Unique identifier
-    pub dst_agent:         u64,
+    dst_agent:         AgentId,
     // Event-specific
-    pub value:             i32,
+    value:             i32,
     // Estimated buff damage. Zero on application event
-    pub buff_dmg:          i32,
+    buff_dmg:          i32,
     // Estimated overwritten stack duration for buff application
-    pub overstack:         u16,
+    overstack:         u16,
     // Skill ID
-    pub skill_id:          u16,
+    skill_id:          u16,
     // Agent map instance id
-    pub src_instid:        u16,
+    src_instid:        u16,
     // Agent map instance id
-    pub dst_instid:        u16,
+    dst_instid:        u16,
     // Master source agent map instance id if source is a minion/pet
-    pub src_master_instid: u16,
-    _pad8:                 u64,
-    _pad1:                 u8,
-    pub iff:               IFF,
+    src_master_instid: u16,
+    _pad8:             u64,
+    _pad1:             u8,
+    iff:               IFF,
     // Buff application, removal, or damage event
-    buff:                  u8,
-    pub result:            CombatResult,
-    pub is_activation:     CombatActivation,
+    buff:              u8,
+    result:            CombatResult,
+    is_activation:     CombatActivation,
     // buff removed. src=relevant, dst=caused it (for strips/cleanses). from cbtr enum
-    pub is_buffremove:     CombatBuffRemove,
+    is_buffremove:     CombatBuffRemove,
     // source agent health was over 90%
-    pub is_src_ninety:     u8,
+    is_src_ninety:     u8,
     // target agent health was under 50%
-    pub is_dst_fifty:      u8,
+    is_dst_fifty:      u8,
     // source agent was moving
-    pub is_src_moving:     u8,
-    pub is_statechange:    CombatStateChange,
+    is_src_moving:     u8,
+    is_statechange:    CombatStateChange,
     // If source was flanking target
-    pub is_flanking:       u8,
+    is_flanking:       u8,
     // All or part damage was vs barrier/shield
-    pub is_shields:        u8,
-    _pad2:                 u16,
+    is_shields:        u8,
+    _pad2:             u16,
 }
 
-impl CombatEvent {
+impl Event for CombatEvent {
     #[inline]
-    pub fn is_buff(&self) -> bool {
-        self.buff > 0
+    fn time(&self) -> u64 {
+        self.time
+    }
+
+    #[inline]
+    fn event_type(&self) -> EventType {
+        if self.is_statechange != CombatStateChange::None {
+            return EventType::StateChange;
+        }
+
+        if self.is_activation != CombatActivation::None {
+            return EventType::Activation;
+        }
+
+        if self.is_buffremove != CombatBuffRemove::None {
+            return EventType::BuffRemove;
+        }
+        
+        if self.buff > 0 {
+            return EventType::BuffApplication;
+        }
+
+        return EventType::PhysicalHit;
+    }
+
+    #[inline]
+    fn source_agent(&self) -> AgentId {
+        if self.event_type() == EventType::BuffRemove { self.dst_agent } else { self.src_agent }
+    }
+
+    #[inline]
+    fn target_agent(&self) -> AgentId {
+        if self.event_type() == EventType::BuffRemove { self.src_agent } else { self.dst_agent }
+    }
+
+    #[inline]
+    fn target_instance(&self) -> InstanceId {
+        // TODO: Also flipped?
+        InstanceId(self.dst_instid)
+    }
+
+    #[inline]
+    fn source_instance(&self) -> InstanceId {
+        // TODO: Also flipped?
+        InstanceId(self.src_instid)
+    }
+
+    #[inline]
+    fn master_source_instance(&self) -> InstanceId {
+        // TODO: Also flipped?
+        InstanceId(self.src_master_instid)
+    }
+
+    #[inline]
+    fn state_change(&self) -> CombatStateChange {
+        self.is_statechange
+    }
+
+    #[inline]
+    fn buff_damage(&self) -> i64 {
+        self.buff_dmg as i64
+    }
+
+    #[inline]
+    fn value(&self) -> i64 {
+        self.value as i64
     }
 }
 
