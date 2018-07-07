@@ -1,5 +1,6 @@
 
 use AgentId;
+use Profession;
 use InstanceId;
 use Event;
 use EventType;
@@ -17,6 +18,12 @@ static UNLISTED_SKILLS: &'static [Skill] = &[
     // TODO: Add boss-specific skills
 ];
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+enum CombatDataVersion {
+    V1,
+    V2,
+}
+
 #[repr(packed)]
 #[derive(Debug, Copy, Clone)]
 pub struct Header {
@@ -27,23 +34,37 @@ pub struct Header {
     pub agents:   u32,
 }
 
+impl Header {
+    fn combat_data_version(&self) -> CombatDataVersion {
+        if self.version[12] == 1 {
+            CombatDataVersion::V2
+        }
+        else {
+            CombatDataVersion::V1
+        }
+    }
+}
+
 #[repr(packed)]
 #[derive(Copy, Clone)]
 pub struct Agent {
-    pub id:          AgentId,
-    pub proffession: u32,
-    pub is_elite:    u32,
-    pub toughness:   u32,
-    pub healing:     u32,
-    pub condition:   u32,
+    pub id:            AgentId,
+    profession:        u32,
+    pub is_elite:      u32,
+    pub toughness:     u16,
+    pub concentration: u16,
+    pub healing:       u16,
+    _pad2_1:           u16,
+    pub condition:     u16,
+    _pad2_2:           u16,
     // Character name [null] Account name [null] Subgroup string literal [null]
     name:            [u8; 68],
 }
 
 impl fmt::Debug for Agent {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Agent({}: {} ({}) profession: {}, is_elite: {}, toughness: {}, healing: {}, condition: {})",
-            {self.id}, self.name(), self.account_name(), {self.proffession}, {self.is_elite}, {self.toughness}, {self.healing}, {self.condition})
+        write!(f, "Agent({}: {} ({}) {}, is_elite: {}, toughness: {}, healing: {}, condition: {})",
+            {self.id}, self.name(), self.account_name(), self.profession(), {self.is_elite}, {self.toughness}, {self.healing}, {self.condition})
     }
 }
 
@@ -65,6 +86,42 @@ impl Agent {
     pub fn subgroup(&self) -> &str {
         // All agent and skill names use UTF8 according to deltaconnected
         unsafe { str::from_utf8_unchecked(self.name.split(|&c| c == 0).nth(2).expect("Invalid C-string in EVTC Actor data")) }
+    }
+
+    pub fn profession(&self) -> Profession {
+        match (self.is_elite, self.profession) {
+            (0xFFFFFFFF, x)  => if x & 0xffff0000 == 0xffff0000 { Profession::Gadget } else { Profession::NonPlayableCharacter }
+            (0, 1)           => Profession::Guardian,
+            (0, 2)           => Profession::Warrior,
+            (0, 3)           => Profession::Engineer,
+            (0, 4)           => Profession::Ranger,
+            (0, 5)           => Profession::Thief,
+            (0, 6)           => Profession::Elementalist,
+            (0, 7)           => Profession::Mesmer,
+            (0, 8)           => Profession::Necromancer,
+            (0, 9)           => Profession::Revenant,
+            (27, _) | (1, 1) => Profession::Dragonhunter,
+            (18, _) | (1, 2) => Profession::Berserker,
+            (43, _) | (1, 3) => Profession::Scrapper,
+            (5,  _) | (1, 4) => Profession::Druid,
+            (7,  _) | (1, 5) => Profession::Daredevil,
+            (48, _) | (1, 6) => Profession::Tempest,
+            (40, _) | (1, 7) => Profession::Chronomancer,
+            (34, _) | (1, 8) => Profession::Reaper,
+            (52, _) | (1, 9) => Profession::Herald,
+            (27, _)          => Profession::Berserker,
+            (40, _)          => Profession::Chronomancer,
+            (55, _)          => Profession::Soulbeast,
+            (56, _)          => Profession::Weaver,
+            (57, _)          => Profession::Holosmith,
+            (58, _)          => Profession::Deadeye,
+            (59, _)          => Profession::Mirage,
+            (60, _)          => Profession::Scourge,
+            (61, _)          => Profession::Spellbreaker,
+            (62, _)          => Profession::Firebrand,
+            (63, _)          => Profession::Renegade,
+            _                => Profession::Unknown,
+        }
     }
 }
 

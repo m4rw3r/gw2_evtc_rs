@@ -1,3 +1,4 @@
+#![feature(type_ascription)]
 extern crate evtc;
 extern crate memmap;
 extern crate rayon;
@@ -8,6 +9,7 @@ use std::marker::PhantomData;
 use std::ops::AddAssign;
 
 use evtc::Event;
+use evtc::EventType;
 
 trait Task: Default {
     fn parse_event(&mut self, time: u64, delta: u64, event: &evtc::raw::CombatEvent);
@@ -111,8 +113,11 @@ fn main() {
     let meta    = evtc::Metadata::new(&evtc);
     // let mut ops = Vec::new();
 
-    for a in meta.agents().iter() {
-        println!("{} {}", a.name(), evtc.events.iter().filter(|e| e.targeting_agent(a) && e.is_boon()).count());
+    for a in meta.agents().iter().filter(|a| a.is_player_character()) {
+        println!("{}", a);
+
+        // println!("{} {}", a.name(), evtc.events.iter().filter(|e| e.targeting_agent(a) && e.is_boon()).count());
+        //println!("{} {}", a.name(), evtc.events.iter().filter(|e| e.from_agent(a) && e.event_type() == EventType::PhysicalHit).map(|e| e.value()).sum(): i64);
     }
 
 /*

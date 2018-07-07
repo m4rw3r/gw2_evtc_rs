@@ -30,11 +30,83 @@ impl Event {
 }
 */
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum Profession {
+    Gadget,
+    NonPlayableCharacter,
+    Guardian,
+    Warrior,
+    Engineer,
+    Ranger,
+    Thief,
+    Elementalist,
+    Mesmer,
+    Necromancer,
+    Revenant,
+    Dragonhunter,
+    Berserker,
+    Scrapper,
+    Druid,
+    Daredevil,
+    Tempest,
+    Chronomancer,
+    Reaper,
+    Herald,
+    Soulbeast,
+    Weaver,
+    Holosmith,
+    Deadeye,
+    Mirage,
+    Scourge,
+    Spellbreaker,
+    Firebrand,
+    Renegade,
+    Unknown,
+}
+
+impl Profession {
+    fn core_profession(self) -> Profession {
+        match self {
+            Profession::Dragonhunter => Profession::Guardian,
+            Profession::Firebrand    => Profession::Guardian,
+            Profession::Berserker    => Profession::Warrior,
+            Profession::Spellbreaker => Profession::Warrior,
+            Profession::Herald       => Profession::Revenant,
+            Profession::Renegade     => Profession::Revenant,
+            Profession::Scrapper     => Profession::Engineer,
+            Profession::Holosmith    => Profession::Engineer,
+            Profession::Druid        => Profession::Ranger,
+            Profession::Soulbeast    => Profession::Ranger,
+            Profession::Daredevil    => Profession::Thief,
+            Profession::Deadeye      => Profession::Thief,
+            Profession::Tempest      => Profession::Elementalist,
+            Profession::Weaver       => Profession::Elementalist,
+            Profession::Chronomancer => Profession::Mesmer,
+            Profession::Mirage       => Profession::Mesmer,
+            Profession::Reaper       => Profession::Necromancer,
+            Profession::Scourge      => Profession::Necromancer,
+            x => x,
+        }
+    }
+}
+
+impl fmt::Display for Profession {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Agent {
     // Agent address
     inner: raw::Agent,
     meta:  AgentMetadata,
+}
+
+impl fmt::Display for Agent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} ({}) {} {} [t={} h={} c={}]", self.inner.name(), self.inner.account_name(), self.inner.profession(), self.inner.subgroup(), {self.inner.toughness}, {self.inner.healing}, {self.inner.condition})
+    }
 }
 
 impl PartialEq for Agent {
@@ -54,6 +126,17 @@ impl Agent {
 
     pub fn subgroup(&self) -> &str {
         self.inner.subgroup()
+    }
+
+    pub fn proffession(&self) -> Profession {
+        self.inner.profession()
+    }
+
+    pub fn is_player_character(&self) -> bool {
+        match self.inner.profession() {
+            Profession::Gadget | Profession::NonPlayableCharacter => false,
+            _ => true,
+        }
     }
 }
 
