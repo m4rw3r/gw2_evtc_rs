@@ -8,28 +8,7 @@ use std::collections::HashMap;
 use raw::CombatStateChange;
 use raw::IFF;
 
-/*
-// TODO: Group the common stuff
-pub struct Event {
-    time:      u64,
-    src_agent: u64,
-    dst_agent: u64,
-}
-
-impl Event {
-    fn from_combat_event(e: raw::CombatEvent) -> Self {
-        let type = e.event_type();
-
-        Event {
-            time:      e.time,
-            // For buff-remove events, the target is the source and reverse
-            src_agent: if type == raw::EventType::BuffRemove { e.dst_agent } else { e.src_agent },
-            dst_agent: if type == raw::EventType::BuffRemove { e.src_agent } else { e.dst_agent },
-        }
-    }
-}
-*/
-
+/// The type of profession, includes NPCs and Gadgets
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum Profession {
     Gadget,
@@ -65,7 +44,7 @@ pub enum Profession {
 }
 
 impl Profession {
-    fn core_profession(self) -> Profession {
+    pub fn core_profession(self) -> Profession {
         match self {
             Profession::Dragonhunter => Profession::Guardian,
             Profession::Firebrand    => Profession::Guardian,
@@ -96,6 +75,49 @@ impl fmt::Display for Profession {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum Boss {
+    ValeGuardian,
+    Gorseval,
+    Sabetha,
+    Slothasor,
+    Matthias,
+    KeepConstruct,
+    Xera,
+    Cairn,
+    MursaatOverseer,
+    Samarog,
+    Deimos,
+    SoullessHorror,
+    Dhuum,
+    Unknown,
+}
+
+impl Boss {
+    fn from_species_id(species: u16) -> Boss {
+        match species {
+            0x3c4e => Boss::ValeGuardian,
+            0x3c45 => Boss::Gorseval,
+            0x3c0f => Boss::Sabetha,
+            0x3efb => Boss::Slothasor,
+            0x3ef3 => Boss::Matthias,
+            0x3f6b => Boss::KeepConstruct,
+            0x3f76 => Boss::Xera,
+            // ???
+            // 0x3f9e => Boss::
+            0x432a => Boss::Cairn,
+            0x4314 => Boss::MursaatOverseer,
+            0x4324 => Boss::Samarog,
+            0x4302 => Boss::Deimos,
+            0x4d37 => Boss::SoullessHorror,
+            0x4bfa => Boss::Dhuum,
+            _      => Boss::Unknown,
+        }
+    }
+}
+
+
+/// A game actor present in the encounter
 #[derive(Debug, Clone)]
 pub struct Agent {
     // Agent address
@@ -130,6 +152,10 @@ impl Agent {
 
     pub fn proffession(&self) -> Profession {
         self.inner.profession()
+    }
+
+    pub fn species_id(&self) -> Option<u16> {
+        self.inner.species_id()
     }
 
     pub fn is_player_character(&self) -> bool {
@@ -174,6 +200,7 @@ impl Default for AgentMetadata {
 
 #[derive(Debug)]
 pub struct Metadata {
+    header: raw::Header,
     agents: Vec<Agent>,
     // agent_data: HashMap<u64, AgentMetadata>,
 }
@@ -214,7 +241,9 @@ impl Metadata {
             println!("{:?}", v);
         }
 
+        // TODO: Filter agents?
         Metadata {
+            header: *buffer.header,
             agents: buffer.agents.iter().map(|agent| Agent {
                 inner: *agent,
                 meta:  map.get(&{agent.id}).map(|m| m.clone()).unwrap_or(Default::default()),
@@ -224,6 +253,16 @@ impl Metadata {
 
     pub fn agents(&self) -> &[Agent] {
         &self.agents
+    }
+
+    pub fn bosses(&self) -> impl Iterator<Item=&Agent> {
+        let boss_id = self.header.boss_id;
+        
+        self.agents.iter().filter(move |a| a.species_id() == Some(boss_id))
+    }
+    
+    pub fn boss(&self) -> Boss {
+        Boss::from_species_id(self.header.boss_id)
     }
 }
 

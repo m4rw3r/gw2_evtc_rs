@@ -109,8 +109,6 @@ impl Agent {
             (40, _) | (1, 7) => Profession::Chronomancer,
             (34, _) | (1, 8) => Profession::Reaper,
             (52, _) | (1, 9) => Profession::Herald,
-            (27, _)          => Profession::Berserker,
-            (40, _)          => Profession::Chronomancer,
             (55, _)          => Profession::Soulbeast,
             (56, _)          => Profession::Weaver,
             (57, _)          => Profession::Holosmith,
@@ -121,6 +119,16 @@ impl Agent {
             (62, _)          => Profession::Firebrand,
             (63, _)          => Profession::Renegade,
             _                => Profession::Unknown,
+        }
+    }
+
+    /// If the actor is a non-playable-character (NPC) then this method will return
+    /// its species id.
+    pub fn species_id(&self) -> Option<u16> {
+        match (self.is_elite, self.profession & 0xffff0000) {
+            (0xffffffff, 0xffff0000) => None,
+            (0xffffffff, _)          => Some((self.profession & 0xffff) as u16),
+            _                        => None,
         }
     }
 }

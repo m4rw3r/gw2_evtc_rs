@@ -2,6 +2,7 @@
 extern crate evtc;
 extern crate memmap;
 extern crate rayon;
+extern crate zip;
 
 use std::fs::File;
 use std::env;
@@ -10,6 +11,8 @@ use std::ops::AddAssign;
 
 use evtc::Event;
 use evtc::EventType;
+
+use zip::ZipArchive;
 
 trait Task: Default {
     fn parse_event(&mut self, time: u64, delta: u64, event: &evtc::raw::CombatEvent);
@@ -105,19 +108,21 @@ impl Property for Value {
     }
 }
 
-fn main() {
-    let file = File::open(env::args().nth(1).expect("missing argument to executable")).expect("could not open file");
-    let mmap = unsafe { memmap::Mmap::map(&file).unwrap() };
-    let evtc = evtc::raw::transmute(&mmap[..]);
+fn parse_data(buffer: &[u8]) {
+    let evtc = evtc::raw::transmute(buffer);
 
     let meta    = evtc::Metadata::new(&evtc);
     // let mut ops = Vec::new();
+
+    println!("Boss: {:?}", meta.boss());
+
+    let boss = meta.bosses().next().unwrap();
 
     for a in meta.agents().iter().filter(|a| a.is_player_character()) {
         println!("{}", a);
 
         // println!("{} {}", a.name(), evtc.events.iter().filter(|e| e.targeting_agent(a) && e.is_boon()).count());
-        //println!("{} {}", a.name(), evtc.events.iter().filter(|e| e.from_agent(a) && e.event_type() == EventType::PhysicalHit).map(|e| e.value()).sum(): i64);
+        println!("{} {}", a.name(), evtc.events.iter().filter(|e| e.from_agent(a) && e.event_type() == EventType::PhysicalHit && e.targeting_agent(boss)).map(|e| e.value()).sum(): i64);
     }
 
 /*
@@ -138,4 +143,26 @@ fn main() {
         }
     })
     */
+}
+
+fn main() {
+    let name       = env::args().nth(1).expect("missing argument to executable");
+    let file       = File::open(&name).expect("could not open file");
+
+    if name.ends_with(".zip") {
+        use std::io::Read;
+
+        let mut archive = ZipArchive::new(file).expect("Failed to unzip file");
+        let mut file    = archive.by_index(0).expect("Failed to extract first file in archive");
+        let mut buffer  = Vec::with_capacity(file.size() as usize);
+
+        file.read_to_end(&mut buffer).expect("Failed to read first file in arcive");
+
+        parse_data(&buffer[..]);
+    }
+    else {
+        let mmap = unsafe { memmap::Mmap::map(&file).expect("Failed to mmap() file") };
+
+        parse_data(&mmap[..]);
+    }
 }
