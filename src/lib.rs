@@ -1,10 +1,12 @@
 
 pub mod raw;
 
-use std::u64;
-use std::fmt;
 use std::collections::HashMap;
+use std::cmp;
+use std::fmt;
+use std::u64;
 
+use raw::CombatEvent;
 use raw::CombatStateChange;
 use raw::IFF;
 
@@ -138,31 +140,53 @@ impl PartialEq for Agent {
 }
 
 impl Agent {
+    #[inline(always)]
     pub fn name(&self) -> &str {
         self.inner.name()
     }
 
+    #[inline(always)]
     pub fn account_name(&self) -> &str {
         self.inner.account_name()
     }
 
+    #[inline(always)]
     pub fn subgroup(&self) -> &str {
         self.inner.subgroup()
     }
 
-    pub fn proffession(&self) -> Profession {
+    #[inline(always)]
+    pub fn profession(&self) -> Profession {
         self.inner.profession()
     }
 
+    #[inline(always)]
     pub fn species_id(&self) -> Option<u16> {
         self.inner.species_id()
     }
 
+    #[inline]
     pub fn is_player_character(&self) -> bool {
         match self.inner.profession() {
             Profession::Gadget | Profession::NonPlayableCharacter => false,
             _ => true,
         }
+    }
+
+    /// Returns true if the agent died during the encounter
+    #[inline(always)]
+    pub fn did_die(&self) -> bool {
+        self.meta.died
+    }
+
+    #[inline(always)]
+    pub fn first_aware(&self) -> u64 {
+        self.meta.first_aware
+    }
+
+    #[inline(always)]
+    pub fn last_aware(&self) -> u64 {
+        self.meta.last_aware
     }
 }
 
@@ -184,6 +208,8 @@ struct AgentMetadata {
     master_instid: InstanceId,
     // Owning address
     master_agent:  AgentId,
+    // If the agent died
+    died:          bool,
 }
 
 impl Default for AgentMetadata {
@@ -194,19 +220,19 @@ impl Default for AgentMetadata {
             last_aware:    u64::MAX,
             master_instid: InstanceId::empty(),
             master_agent:  AgentId::empty(),
+            died:          false,
         }
     }
 }
 
 #[derive(Debug)]
-pub struct Metadata {
-    header: raw::Header,
+pub struct Metadata<'a> {
+    buffer: &'a raw::EvtcBuf<'a>,
     agents: Vec<Agent>,
-    // agent_data: HashMap<u64, AgentMetadata>,
 }
 
-impl Metadata {
-    pub fn new(buffer: &raw::EvtcBuf) -> Self {
+impl<'a> Metadata<'a> {
+    pub fn new(buffer: &'a raw::EvtcBuf) -> Self {
         let mut map = HashMap::<AgentId, AgentMetadata>::with_capacity(buffer.agents.len());
 
         for e in buffer.events.iter() {
@@ -222,6 +248,7 @@ impl Metadata {
                 last_aware:    e.time(),
                 master_instid: InstanceId::empty(),
                 master_agent:  AgentId::empty(),
+                died:          false,
             });
 
             // Apparently if it is not a combat-state-change then it is wrong
@@ -235,15 +262,20 @@ impl Metadata {
                 meta.master_instid = e.master_source_instance();
                 meta.master_agent  = master_agent.unwrap_or(meta.master_agent);
             }
+
+            if e.state_change() == CombatStateChange::ChangeDead {
+                meta.died = true;
+            }
         }
 
         for v in map.values().filter(|v| (v.master_instid != InstanceId::empty()) ^ (v.master_agent != AgentId::empty())) {
+            // FIXME: Is this necessary?
             println!("{:?}", v);
         }
 
         // TODO: Filter agents?
         Metadata {
-            header: *buffer.header,
+            buffer: buffer,
             agents: buffer.agents.iter().map(|agent| Agent {
                 inner: *agent,
                 meta:  map.get(&{agent.id}).map(|m| m.clone()).unwrap_or(Default::default()),
@@ -256,13 +288,21 @@ impl Metadata {
     }
 
     pub fn bosses(&self) -> impl Iterator<Item=&Agent> {
-        let boss_id = self.header.boss_id;
+        let boss_id = self.buffer.header.boss_id;
         
         self.agents.iter().filter(move |a| a.species_id() == Some(boss_id))
     }
-    
+
     pub fn boss(&self) -> Boss {
-        Boss::from_species_id(self.header.boss_id)
+        Boss::from_species_id(self.buffer.header.boss_id)
+    }
+
+    /// Only returns the events which happened while the boss(es) were present in the fight,
+    /// does not contain gaps.
+    pub fn encounter_events(&self) -> impl Iterator<Item=&CombatEvent> {
+        let (start, end) = self.bosses().fold((0, u64::MAX), |(start, end), a| (cmp::max(start, a.first_aware()), cmp::min(end, a.last_aware())));
+
+        self.buffer.events.iter().filter(move |e| start <= e.time() && e.time() <= end)
     }
 }
 

@@ -114,7 +114,7 @@ fn parse_data(buffer: &[u8]) {
     let meta    = evtc::Metadata::new(&evtc);
     // let mut ops = Vec::new();
 
-    println!("Boss: {:?}", meta.boss());
+    println!("Boss: {:?}, {}", meta.boss(), if meta.bosses().filter(|b| b.did_die()).count() > 0 { "success" } else { "failed" });
 
     let boss = meta.bosses().next().unwrap();
 
@@ -122,7 +122,7 @@ fn parse_data(buffer: &[u8]) {
         println!("{}", a);
 
         // println!("{} {}", a.name(), evtc.events.iter().filter(|e| e.targeting_agent(a) && e.is_boon()).count());
-        println!("{} {}", a.name(), evtc.events.iter().filter(|e| e.from_agent(a) && e.event_type() == EventType::PhysicalHit && e.targeting_agent(boss)).map(|e| e.value()).sum(): i64);
+        println!("{} {}", a.name(), meta.encounter_events().filter(|e| e.from_agent(a) && e.event_type() == EventType::PhysicalHit && e.targeting_agent(boss)).map(|e| e.value()).sum(): i64);
     }
 
 /*
