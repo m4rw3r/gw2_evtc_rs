@@ -58,6 +58,7 @@ trait Property {
     fn get_data(event: &evtc::raw::CombatEvent) -> Self::Type;
 }
 
+/*
 #[derive(Debug)]
 struct SumValue(i64);
 
@@ -107,22 +108,20 @@ impl Property for Value {
         event.value()
     }
 }
+*/
 
 fn parse_data(buffer: &[u8]) {
     let evtc = evtc::raw::transmute(buffer);
+    let meta = evtc::Metadata::new(&evtc);
 
-    let meta    = evtc::Metadata::new(&evtc);
-    // let mut ops = Vec::new();
-
-    println!("Boss: {:?}, {}", meta.boss(), if meta.bosses().filter(|b| b.did_die()).count() > 0 { "success" } else { "failed" });
+    println!("Boss: {:?}, {}", meta.boss(), if meta.bosses().fold(true, |a, b| a && b.did_die()) { "success" } else { "failed" });
 
     let boss = meta.bosses().next().unwrap();
 
     for a in meta.agents().iter().filter(|a| a.is_player_character()) {
         println!("{}", a);
 
-        // println!("{} {}", a.name(), evtc.events.iter().filter(|e| e.targeting_agent(a) && e.is_boon()).count());
-        println!("{} {}", a.name(), meta.encounter_events().filter(|e| e.from_agent(a) && e.event_type() == EventType::PhysicalHit && e.targeting_agent(boss)).map(|e| e.value()).sum(): i64);
+        println!("{} {}", a.name(), meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && e.targeting_agent(boss)).map(|e| e.damage()).sum(): i64);
     }
 
 /*

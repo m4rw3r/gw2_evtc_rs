@@ -373,8 +373,12 @@ impl Event for CombatEvent {
     }
 
     #[inline]
-    fn value(&self) -> i64 {
-        self.value as i64
+    fn damage(&self) -> i64 {
+        match self.event_type() {
+            EventType::PhysicalHit     => self.value as i64,
+            EventType::BuffApplication => self.buff_dmg as i64,
+            _                          => 0,
+        }
     }
 }
 

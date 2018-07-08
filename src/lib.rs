@@ -300,7 +300,7 @@ impl<'a> Metadata<'a> {
     /// Only returns the events which happened while the boss(es) were present in the fight,
     /// does not contain gaps.
     pub fn encounter_events(&self) -> impl Iterator<Item=&CombatEvent> {
-        let (start, end) = self.bosses().fold((0, u64::MAX), |(start, end), a| (cmp::max(start, a.first_aware()), cmp::min(end, a.last_aware())));
+        let (start, end) = self.bosses().fold((u64::MAX, 0), |(start, end), a| (cmp::min(start, a.first_aware()), cmp::max(end, a.last_aware())));
 
         self.buffer.events.iter().filter(move |e| start <= e.time() && e.time() <= end)
     }
@@ -387,9 +387,11 @@ pub trait Event {
 
     // TODO
 
-    // TODO: Typesafe this
+    /// Returns the damage done by this event
+    /// 
+    /// Normalized across physical hits and buff events.
     #[inline]
-    fn value(&self) -> i64;
+    fn damage(&self) -> i64;
 
     // TODO: Maybe option?
     #[inline]
@@ -421,6 +423,17 @@ pub trait Event {
             | CombatStateChange::ShardId
             | CombatStateChange::GwBuild => false,
             _ => self.source_agent() == {agent.inner.id},
+        }
+    }
+
+    fn from_agent_and_gadgets(&self, agent: &Agent) -> bool {
+        match self.state_change() {
+            CombatStateChange::LogStart
+            | CombatStateChange::LogEnd
+            | CombatStateChange::Language
+            | CombatStateChange::ShardId
+            | CombatStateChange::GwBuild => false,
+            _ => self.source_agent() == {agent.inner.id} || self.master_source_instance() == agent.meta.instid,
         }
     }
 
