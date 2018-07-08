@@ -537,35 +537,58 @@ impl HitStatistics {
     /// NOTE: Make sure to filter out the proper hits beforehand.
     /// NOTE: Conditions cannot crit
     pub fn from_iterator<'a, I: Iterator<Item=&'a CombatEvent>>(i: I) -> Self {
-        i.fold(Default::default(), |s, e| HitStatistics {
-            total_damage: s.total_damage + match e.hit_result() {
-                    HitResult::Normal
-                | HitResult::Crit
-                | HitResult::Glance
-                | HitResult::KillingBlow => e.damage(),
-                _                        => 0,
-            },
-            wasted_damage: s.wasted_damage + match e.hit_result() {
-                    HitResult::Block
-                | HitResult::Evade
-                | HitResult::Interrupt
-                | HitResult::Absorb
-                | HitResult::Blind => e.damage(),
-                _                  => 0,
-            },
-            hits:          s.hits + 1,
-            flanking:      s.flanking    + if e.is_source_flanking() { 1 } else { 0 },
-            moving:        s.moving      + if e.is_source_moving() { 1 } else { 0 },
-            criticals:     s.criticals   + if e.hit_result() == HitResult::Crit      { 1 } else { 0 },
-            glancing:      s.glancing    + if e.hit_result() == HitResult::Glance    { 1 } else { 0 },
-            interrupted:   s.interrupted + if e.hit_result() == HitResult::Interrupt { 1 } else { 0 },
-            blocked:       s.blocked     + if e.hit_result() == HitResult::Block     { 1 } else { 0 },
-            evaded:        s.evaded      + if e.hit_result() == HitResult::Evade     { 1 } else { 0 },
-            missed:        s.missed      + if e.hit_result() == HitResult::Blind     { 1 } else { 0 },
-            absorbed:      s.absorbed    + if e.hit_result() == HitResult::Absorb    { 1 } else { 0 },
-            min_damage:    cmp::min(s.min_damage, e.damage()),
-            max_damage:    cmp::max(s.max_damage, e.damage()),
-        })
+        i.fold(Default::default(), |s, e| )
+    }
+
+    pub fn add_event(&mut self, e: &CombatEvent) {
+        self.total_damage += match e.hit_result() {
+              HitResult::Normal
+            | HitResult::Crit
+            | HitResult::Glance
+            | HitResult::KillingBlow => e.damage(),
+            _                        => 0,
+        };
+        self.wasted_damage += match e.hit_result() {
+              HitResult::Block
+            | HitResult::Evade
+            | HitResult::Interrupt
+            | HitResult::Absorb
+            | HitResult::Blind => e.damage(),
+            _                  => 0,
+        };
+        self.hits += 1;
+
+        if e.is_source_flanking() {
+            self.flanking += 1;
+        }
+        if e.is_source_moving() {
+            self.moving += 1;
+        }
+        if e.hit_result() == HitResult::Crit {
+            self.criticals += 1;
+        }
+
+        if e.hit_result() == HitResult::Glance    { self.glancing += 1; }
+        if e.hit_result() == HitResult::Interrupt { self.interrupted += 1; }
+        if e.hit_result() == HitResult::Block     { self.blocked += 1; }
+        if e.hit_result() == HitResult::Evade     { self.evaded += 1; }
+        if e.hit_result() == HitResult::Blind     { self.missed += 1; }
+        if e.hit_result() == HitResult::Absorb    { self.absorbed += 1; }
+
+        self.min_damage = cmp::min(s.min_damage, e.damage()),
+        self.max_damage = cmp::max(s.max_damage, e.damage()),
+    }
+}
+
+impl<'a> FromIterator<&'a CombatEvent> for HitStatistics {
+    fn from_iter<I: IntoIterator<Item=&'a CombatEvent>(iter: I) -> Self {
+        let mut s = Default::default();
+
+        for e in iter {
+            s.add_event(e);
+        }
+
+        s
     }
 }
 
@@ -588,6 +611,10 @@ impl Default for HitStatistics {
             max_damage:    0,
         }
     }
+}
+
+pub struct AbilityStatistics {
+
 }
 
 #[derive(Debug, Copy, Clone)]
