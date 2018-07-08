@@ -5,8 +5,10 @@ use std::collections::HashMap;
 use std::cmp;
 use std::fmt;
 use std::u64;
+use std::i64;
 
 use raw::CombatEvent;
+use raw::HitResult;
 use raw::CombatStateChange;
 use raw::IFF;
 
@@ -393,6 +395,15 @@ pub trait Event {
     #[inline]
     fn damage(&self) -> i64;
 
+    #[inline]
+    fn hit_result(&self) -> HitResult;
+
+    #[inline]
+    fn is_source_flanking(&self) -> bool;
+
+    #[inline]
+    fn is_source_moving(&self) -> bool;
+
     // TODO: Maybe option?
     #[inline]
     fn buff_damage(&self) -> i64;
@@ -452,6 +463,58 @@ pub trait Event {
         self.target_instance() != InstanceId::empty() && self.event_type() == EventType::PhysicalHit && self.iff() == IFF::Foe
     }
     */
+}
+
+/// Statistics for physical hits
+#[derive(Debug, Copy, Clone)]
+pub struct HitStatistics {
+    /// Total physical damage
+    total_damage: i64,
+    /// Total number of hits
+    hits:         u32,
+    /// Number of critical hits
+    criticals:    u32,
+    /// Number of hits which were done while source was flanking target
+    flanking:     u32,
+    /// Number of hits which were glancing hits
+    glancing:     u32,
+    /// Number of hits which were done while source was moving
+    moving:       u32,
+    /// Minimum hit damage
+    min_damage:   i64,
+    /// Maximum hit damage
+    max_damage:   i64,
+}
+
+impl HitStatistics {
+    pub fn from_iterator<'a, I: Iterator<Item=&'a CombatEvent>>(i: I) -> Self {
+          i.filter(|e| e.event_type() == EventType::PhysicalHit)
+           .fold(Default::default(), |s, e| HitStatistics {
+               total_damage: s.total_damage + e.damage(),
+               hits:         s.hits + 1,
+               criticals:    s.criticals + if e.hit_result() == HitResult::Crit { 1 } else { 0 },
+               flanking:     s.flanking  + if e.is_source_flanking() { 1 } else { 0 },
+               glancing:     s.criticals + if e.hit_result() == HitResult::Glance { 1 } else { 0 },
+               moving:       s.moving    + if e.is_source_moving() { 1 } else { 0 },
+               min_damage:   cmp::min(s.min_damage, e.damage()),
+               max_damage:   cmp::max(s.max_damage, e.damage()),
+           })
+    }
+}
+
+impl Default for HitStatistics {
+    fn default() -> Self {
+        HitStatistics {
+            total_damage: 0,
+            hits:         0,
+            criticals:    0,
+            flanking:     0,
+            glancing:     0,
+            moving:       0,
+            min_damage:   i64::MAX,
+            max_damage:   0,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]

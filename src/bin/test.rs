@@ -11,6 +11,7 @@ use std::ops::AddAssign;
 
 use evtc::Event;
 use evtc::EventType;
+use evtc::HitStatistics;
 
 use zip::ZipArchive;
 
@@ -110,6 +111,18 @@ impl Property for Value {
 }
 */
 
+#[derive(Debug, Clone)]
+struct AgentStatistics;
+
+#[derive(Debug, Clone)]
+struct PlayerSummary {
+    total_damage:   i64,
+    boss_damage:    i64,
+    hit_stats:      HitStatistics,
+    boss_hit_stats: HitStatistics,
+    agents:         Vec<AgentStatistics>,
+}
+
 fn parse_data(buffer: &[u8]) {
     let evtc = evtc::raw::transmute(buffer);
     let meta = evtc::Metadata::new(&evtc);
@@ -119,9 +132,9 @@ fn parse_data(buffer: &[u8]) {
     let boss = meta.bosses().next().unwrap();
 
     for a in meta.agents().iter().filter(|a| a.is_player_character()) {
-        println!("{}", a);
+        // println!("{} {}", a.name(), meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && e.targeting_agent(boss)).map(|e| e.damage()).sum(): i64);
 
-        println!("{} {}", a.name(), meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && e.targeting_agent(boss)).map(|e| e.damage()).sum(): i64);
+        println!("{} {:?}", a.name(), HitStatistics::from_iterator(meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && e.targeting_agent(boss))));
     }
 
 /*

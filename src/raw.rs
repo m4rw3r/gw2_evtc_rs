@@ -162,7 +162,7 @@ pub enum IFF {
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CombatResult {
+pub enum HitResult {
     // good physical hit
     Normal      = 0, 
     // physical hit was crit
@@ -289,7 +289,7 @@ pub struct CombatEvent {
     iff:               IFF,
     // Buff application, removal, or damage event
     buff:              u8,
-    result:            CombatResult,
+    result:            HitResult,
     is_activation:     CombatActivation,
     // buff removed. src=relevant, dst=caused it (for strips/cleanses). from cbtr enum
     is_buffremove:     CombatBuffRemove,
@@ -379,6 +379,21 @@ impl Event for CombatEvent {
             EventType::BuffApplication => self.buff_dmg as i64,
             _                          => 0,
         }
+    }
+
+    #[inline]
+    fn hit_result(&self) -> HitResult {
+        self.result
+    }
+
+    #[inline]
+    fn is_source_flanking(&self) -> bool {
+        self.is_flanking > 0
+    }
+
+    #[inline]
+    fn is_source_moving(&self) -> bool {
+        self.is_src_moving > 0
     }
 }
 
