@@ -1,22 +1,26 @@
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+extern crate fnv;
 
 pub mod raw;
+
+use fnv::FnvHashMap;
 
 use serde::ser::Serialize;
 use serde::ser::Serializer;
 
-use std::collections::HashMap;
+use std::iter::FromIterator;
 use std::cmp;
 use std::fmt;
 use std::u64;
 use std::i64;
 
 use raw::CombatEvent;
-use raw::HitResult;
 use raw::CombatStateChange;
+use raw::HitResult;
 use raw::IFF;
+use raw::Skill;
 
 /// The type of profession, includes NPCs and Gadgets
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize)]
@@ -256,7 +260,7 @@ pub struct Metadata<'a> {
 
 impl<'a> Metadata<'a> {
     pub fn new(buffer: &'a raw::EvtcBuf) -> Self {
-        let mut map = HashMap::<AgentId, AgentMetadata>::with_capacity(buffer.agents.len());
+        let mut map = FnvHashMap::<AgentId, AgentMetadata>::with_capacity_and_hasher(buffer.agents.len(), Default::default());
 
         for e in buffer.events.iter() {
             let master_agent = if e.master_source_instance() != InstanceId::empty() {
@@ -326,6 +330,17 @@ impl<'a> Metadata<'a> {
         let (start, end) = self.bosses().fold((u64::MAX, 0), |(start, end), a| (cmp::min(start, a.first_aware()), cmp::max(end, a.last_aware())));
 
         self.buffer.events.iter().filter(move |e| start <= e.time() && e.time() <= end)
+    }
+
+    pub fn skills(&self) -> impl Iterator<Item=&Skill> {
+        // TODO: There seem to be kinda empty skills in this list
+        self.buffer.skills.iter().chain(raw::UNLISTED_SKILLS.iter())
+    }
+
+    pub fn agents_for_master(&self, a: &Agent) -> impl Iterator<Item=&Agent> {
+        let master_id = a.meta.instid;
+
+        self.agents.iter().filter(move |a| a.meta.master_instid == master_id)
     }
 }
 
@@ -433,6 +448,12 @@ pub trait Event {
     fn state_change(&self) -> CombatStateChange;
 
     #[inline]
+    fn is_source_over90(&self) -> bool;
+
+    #[inline]
+    fn skill_id(&self) -> u16;
+
+    #[inline]
     fn targeting_agent(&self, agent: &Agent) -> bool {
         match self.state_change() {
             CombatStateChange::EnterCombat
@@ -509,6 +530,8 @@ pub struct HitStatistics {
     criticals:     u32,
     /// Number of hits which were done while source was flanking target
     flanking:      u32,
+    /// Number of hits while source is over 90% HP
+    scholar:       u32,
     /// Number of hits which were glancing hits
     glancing:      u32,
     /// Number of hits which were done while source was moving
@@ -532,14 +555,7 @@ pub struct HitStatistics {
 }
 
 impl HitStatistics {
-    /// Converts an iterator of combat events into a HitStatistics struct.
-    /// 
-    /// NOTE: Make sure to filter out the proper hits beforehand.
-    /// NOTE: Conditions cannot crit
-    pub fn from_iterator<'a, I: Iterator<Item=&'a CombatEvent>>(i: I) -> Self {
-        i.fold(Default::default(), |s, e| )
-    }
-
+    #[inline]
     pub fn add_event(&mut self, e: &CombatEvent) {
         self.total_damage += match e.hit_result() {
               HitResult::Normal
@@ -556,14 +572,17 @@ impl HitStatistics {
             | HitResult::Blind => e.damage(),
             _                  => 0,
         };
+
         self.hits += 1;
 
         if e.is_source_flanking() {
             self.flanking += 1;
         }
+
         if e.is_source_moving() {
             self.moving += 1;
         }
+
         if e.hit_result() == HitResult::Crit {
             self.criticals += 1;
         }
@@ -575,14 +594,15 @@ impl HitStatistics {
         if e.hit_result() == HitResult::Blind     { self.missed += 1; }
         if e.hit_result() == HitResult::Absorb    { self.absorbed += 1; }
 
-        self.min_damage = cmp::min(s.min_damage, e.damage()),
-        self.max_damage = cmp::max(s.max_damage, e.damage()),
+        self.min_damage = cmp::min(self.min_damage, e.damage());
+        self.max_damage = cmp::max(self.max_damage, e.damage());
     }
 }
 
 impl<'a> FromIterator<&'a CombatEvent> for HitStatistics {
-    fn from_iter<I: IntoIterator<Item=&'a CombatEvent>(iter: I) -> Self {
-        let mut s = Default::default();
+    #[inline]
+    fn from_iter<I: IntoIterator<Item=&'a CombatEvent>>(iter: I) -> Self {
+        let mut s: HitStatistics = Default::default();
 
         for e in iter {
             s.add_event(e);
@@ -593,6 +613,7 @@ impl<'a> FromIterator<&'a CombatEvent> for HitStatistics {
 }
 
 impl Default for HitStatistics {
+    #[inline]
     fn default() -> Self {
         HitStatistics {
             total_damage:  0,
@@ -600,6 +621,7 @@ impl Default for HitStatistics {
             hits:          0,
             criticals:     0,
             flanking:      0,
+            scholar:       0,
             glancing:      0,
             moving:        0,
             interrupted:   0,
@@ -613,8 +635,58 @@ impl Default for HitStatistics {
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
 pub struct AbilityStatistics {
+    abilities: FnvHashMap<u16, HitStatistics>,
+}
 
+impl AbilityStatistics {
+    #[inline]
+    pub fn add_event(&mut self, e: &CombatEvent) {
+        self.abilities.entry(e.skill_id()).or_insert(Default::default()).add_event(e);
+    }
+}
+
+impl<'a> FromIterator<&'a CombatEvent> for AbilityStatistics {
+    #[inline]
+    fn from_iter<I: IntoIterator<Item=&'a CombatEvent>>(iter: I) -> Self {
+        let mut s: AbilityStatistics = Default::default();
+
+        for e in iter {
+            s.add_event(e);
+        }
+
+        s
+    }
+}
+
+impl Default for AbilityStatistics {
+    #[inline]
+    fn default() -> Self {
+        AbilityStatistics {
+            abilities: FnvHashMap::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct AbilityAndTotalStatistics {
+    total:     HitStatistics,
+    #[serde(flatten)]
+    abilities: AbilityStatistics,
+}
+
+impl<'a> FromIterator<&'a CombatEvent> for AbilityAndTotalStatistics {
+    fn from_iter<I: IntoIterator<Item=&'a CombatEvent>>(iter: I) -> Self {
+        let mut s: AbilityAndTotalStatistics = Default::default();
+
+        for e in iter {
+            s.total.add_event(e);
+            s.abilities.add_event(e);
+        }
+
+        s
+    }
 }
 
 #[derive(Debug, Copy, Clone)]

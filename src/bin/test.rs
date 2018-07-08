@@ -1,4 +1,5 @@
 extern crate evtc;
+extern crate fnv;
 extern crate memmap;
 extern crate rayon;
 extern crate zip;
@@ -6,15 +7,18 @@ extern crate zip;
 extern crate serde_derive;
 extern crate serde_json;
 
-use std::fs::File;
-use std::env;
-use std::marker::PhantomData;
-use std::ops::AddAssign;
+use fnv::FnvHashMap;
 
+use evtc::AbilityAndTotalStatistics;
 use evtc::Agent;
 use evtc::Event;
 use evtc::EventType;
 use evtc::HitStatistics;
+
+use std::fs::File;
+use std::env;
+use std::marker::PhantomData;
+use std::ops::AddAssign;
 
 use zip::ZipArchive;
 
@@ -115,7 +119,11 @@ impl Property for Value {
 */
 
 #[derive(Debug, Clone, Serialize)]
-struct AgentStatistics;
+struct AgentStatistics<'a> {
+    agent:          &'a Agent,
+    #[serde(rename="bossHits")]
+    stats:          AbilityAndTotalStatistics,
+}
 
 #[derive(Debug, Clone, Serialize)]
 struct PlayerSummary<'a> {
@@ -126,7 +134,17 @@ struct PlayerSummary<'a> {
     boss_hit_stats:     HitStatistics,
     #[serde(rename="physicalBossHits")]
     physical_hit_stats: HitStatistics,
-    agents:             Vec<AgentStatistics>,
+    agents:             Vec<AgentStatistics<'a>>,
+}
+
+fn group_agents_by_species<'a, I: Iterator<Item=&'a Agent>>(iter: I) -> FnvHashMap<u16, Vec<&'a Agent>> {
+    let mut map = FnvHashMap::default();
+
+    for a in iter {
+        map.entry(a.species_id().unwrap()).or_insert(Vec::new()).push(a);
+    }
+
+    map
 }
 
 fn parse_data(buffer: &[u8]) {
@@ -137,21 +155,22 @@ fn parse_data(buffer: &[u8]) {
 
     let boss = meta.bosses().next().unwrap();
 
-    for a in meta.agents().iter().filter(|a| a.is_player_character()) {
-        let summary = PlayerSummary {
-            agent: a,
-            hit_stats:          HitStatistics::from_iterator(meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && e.is_damage())),
-            boss_hit_stats:     HitStatistics::from_iterator(meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && e.targeting_agent(boss) && e.is_damage())),
-            physical_hit_stats: HitStatistics::from_iterator(meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && e.targeting_agent(boss) && e.is_physical_hit())),
-            agents:             Vec::new(),
-        };
+    let player_summaries: Vec<_> = meta.agents().iter().filter(|a| a.is_player_character()).map(|a| PlayerSummary {
+        agent: a,
+        hit_stats:          meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && e.is_damage()).collect(),
+        boss_hit_stats:     meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && e.targeting_agent(boss) && e.is_damage()).collect(),
+        physical_hit_stats: meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && e.targeting_agent(boss) && e.is_physical_hit()).collect(),
+        agents:             (&[vec![a]]).iter().chain(group_agents_by_species(meta.agents_for_master(a)).values()).map(|minions| AgentStatistics {
+            agent: minions[0],
+            stats: meta.encounter_events().filter(|e| minions.iter().any(|m| e.from_agent(m)) && e.targeting_agent(boss) && e.is_damage()).collect(),
+        }).collect(),
+    }).collect();
 
-        println!("{}", serde_json::to_string_pretty(&summary).unwrap());
+    println!("{}", serde_json::to_string_pretty(&player_summaries).unwrap());
 
         // println!("{} {}", a.name(), meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && e.targeting_agent(boss)).map(|e| e.damage()).sum(): i64);
 
         // println!("{} {:?}", a.name(), HitStatistics::from_iterator(meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && e.targeting_agent(boss) && e.is_physical_hit())));
-    }
 
 /*
     println!("{:?}", meta);

@@ -11,7 +11,7 @@ use std::slice;
 use std::str;
 
 /// Array of unlisted skills which are not part of the evtc-file
-static UNLISTED_SKILLS: &'static [Skill] = &[
+pub static UNLISTED_SKILLS: &'static [Skill] = &[
     Skill { id: 1066,  name: *b"Resurrect\0                                                      "},
     Skill { id: 1175,  name: *b"Bandage\0                                                        "},
     Skill { id: 65001, name: *b"Dodge\0                                                          "},
@@ -394,6 +394,16 @@ impl Event for CombatEvent {
     #[inline]
     fn is_source_moving(&self) -> bool {
         self.is_src_moving > 0
+    }
+
+    #[inline]
+    fn is_source_over90(&self) -> bool {
+        self.is_src_ninety > 0
+    }
+
+    #[inline]
+    fn skill_id(&self) -> u16 {
+        self.skill_id
     }
 }
 
