@@ -1,5 +1,11 @@
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 
 pub mod raw;
+
+use serde::ser::Serialize;
+use serde::ser::Serializer;
 
 use std::collections::HashMap;
 use std::cmp;
@@ -13,7 +19,7 @@ use raw::CombatStateChange;
 use raw::IFF;
 
 /// The type of profession, includes NPCs and Gadgets
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize)]
 pub enum Profession {
     Gadget,
     NonPlayableCharacter,
@@ -79,7 +85,7 @@ impl fmt::Display for Profession {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize)]
 pub enum Boss {
     ValeGuardian,
     Gorseval,
@@ -192,11 +198,26 @@ impl Agent {
     }
 }
 
-/*
-impl<I> EventsFilter for I
-  where I: Iterator<Item=&raw::CombatEvent> {
+impl Serialize for Agent {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+      where S: Serializer {
+        use serde::ser::SerializeMap;
+
+        let mut map = serializer.serialize_map(Some(9))?;
+
+        map.serialize_entry("name",        self.inner.name())?;
+        map.serialize_entry("accountName", self.inner.account_name())?;
+        map.serialize_entry("subgroup",    self.inner.subgroup())?;
+        map.serialize_entry("isPlayer",    &self.is_player_character())?;
+        map.serialize_entry("speciesId",   &self.species_id())?;
+        map.serialize_entry("profession",  &self.profession())?;
+        map.serialize_entry("firstAware",  &self.meta.first_aware)?;
+        map.serialize_entry("lastAware",   &self.meta.last_aware)?;
+        map.serialize_entry("didDie",      &self.did_die())?;
+
+        map.end()
+    }
 }
-*/
 
 #[derive(Debug, Clone)]
 struct AgentMetadata {
@@ -457,62 +478,114 @@ pub trait Event {
         }
     }
 
-/*
     #[inline]
-    fn is_physica_damage(&self) -> bool {
-        self.target_instance() != InstanceId::empty() && self.event_type() == EventType::PhysicalHit && self.iff() == IFF::Foe
+    fn is_physical_hit(&self) -> bool {
+        self.event_type() == EventType::PhysicalHit
     }
-    */
+    
+    #[inline]
+    fn is_condition_tick(&self) -> bool {
+        self.event_type() == EventType::BuffApplication && self.buff_damage() > 0
+    }
+
+    #[inline]
+    fn is_damage(&self) -> bool {
+        self.is_physical_hit() || self.is_condition_tick()
+    }
 }
 
 /// Statistics for physical hits
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize)]
 pub struct HitStatistics {
     /// Total physical damage
-    total_damage: i64,
+    #[serde(rename="totalDamage")]
+    total_damage:  i64,
+    /// Total physical damage wasted being blocked, evaded, interrupted, absorbed (including invuln) or missed
+    #[serde(rename="wastedDamage")]
+    wasted_damage: i64,
     /// Total number of hits
-    hits:         u32,
+    hits:          u32,
     /// Number of critical hits
-    criticals:    u32,
+    criticals:     u32,
     /// Number of hits which were done while source was flanking target
-    flanking:     u32,
+    flanking:      u32,
     /// Number of hits which were glancing hits
-    glancing:     u32,
+    glancing:      u32,
     /// Number of hits which were done while source was moving
-    moving:       u32,
+    moving:        u32,
+    /// Number of hits which were interrupted
+    interrupted:   u32,
+    /// Number of hits which got blocked by target
+    blocked:       u32,
+    /// Number of hits which got evaded by target
+    evaded:        u32,
+    /// Number of hits missed
+    missed:        u32,
+    /// Number of hits absorbed by target
+    absorbed:      u32,
     /// Minimum hit damage
-    min_damage:   i64,
+    #[serde(rename="minDamage")]
+    min_damage:    i64,
     /// Maximum hit damage
-    max_damage:   i64,
+    #[serde(rename="maxDamage")]
+    max_damage:    i64,
 }
 
 impl HitStatistics {
+    /// Converts an iterator of combat events into a HitStatistics struct.
+    /// 
+    /// NOTE: Make sure to filter out the proper hits beforehand.
+    /// NOTE: Conditions cannot crit
     pub fn from_iterator<'a, I: Iterator<Item=&'a CombatEvent>>(i: I) -> Self {
-          i.filter(|e| e.event_type() == EventType::PhysicalHit)
-           .fold(Default::default(), |s, e| HitStatistics {
-               total_damage: s.total_damage + e.damage(),
-               hits:         s.hits + 1,
-               criticals:    s.criticals + if e.hit_result() == HitResult::Crit { 1 } else { 0 },
-               flanking:     s.flanking  + if e.is_source_flanking() { 1 } else { 0 },
-               glancing:     s.criticals + if e.hit_result() == HitResult::Glance { 1 } else { 0 },
-               moving:       s.moving    + if e.is_source_moving() { 1 } else { 0 },
-               min_damage:   cmp::min(s.min_damage, e.damage()),
-               max_damage:   cmp::max(s.max_damage, e.damage()),
-           })
+        i.fold(Default::default(), |s, e| HitStatistics {
+            total_damage: s.total_damage + match e.hit_result() {
+                    HitResult::Normal
+                | HitResult::Crit
+                | HitResult::Glance
+                | HitResult::KillingBlow => e.damage(),
+                _                        => 0,
+            },
+            wasted_damage: s.wasted_damage + match e.hit_result() {
+                    HitResult::Block
+                | HitResult::Evade
+                | HitResult::Interrupt
+                | HitResult::Absorb
+                | HitResult::Blind => e.damage(),
+                _                  => 0,
+            },
+            hits:          s.hits + 1,
+            flanking:      s.flanking    + if e.is_source_flanking() { 1 } else { 0 },
+            moving:        s.moving      + if e.is_source_moving() { 1 } else { 0 },
+            criticals:     s.criticals   + if e.hit_result() == HitResult::Crit      { 1 } else { 0 },
+            glancing:      s.glancing    + if e.hit_result() == HitResult::Glance    { 1 } else { 0 },
+            interrupted:   s.interrupted + if e.hit_result() == HitResult::Interrupt { 1 } else { 0 },
+            blocked:       s.blocked     + if e.hit_result() == HitResult::Block     { 1 } else { 0 },
+            evaded:        s.evaded      + if e.hit_result() == HitResult::Evade     { 1 } else { 0 },
+            missed:        s.missed      + if e.hit_result() == HitResult::Blind     { 1 } else { 0 },
+            absorbed:      s.absorbed    + if e.hit_result() == HitResult::Absorb    { 1 } else { 0 },
+            min_damage:    cmp::min(s.min_damage, e.damage()),
+            max_damage:    cmp::max(s.max_damage, e.damage()),
+        })
     }
 }
 
 impl Default for HitStatistics {
     fn default() -> Self {
         HitStatistics {
-            total_damage: 0,
-            hits:         0,
-            criticals:    0,
-            flanking:     0,
-            glancing:     0,
-            moving:       0,
-            min_damage:   i64::MAX,
-            max_damage:   0,
+            total_damage:  0,
+            wasted_damage: 0,
+            hits:          0,
+            criticals:     0,
+            flanking:      0,
+            glancing:      0,
+            moving:        0,
+            interrupted:   0,
+            blocked:       0,
+            evaded:        0,
+            missed:        0,
+            absorbed:      0,
+            min_damage:    i64::MAX,
+            max_damage:    0,
         }
     }
 }

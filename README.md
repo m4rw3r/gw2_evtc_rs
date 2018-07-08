@@ -34,7 +34,6 @@
       * [ ] Damage taken, damage absorbed
       * [ ] Boons stripped
       * [ ] Absorbed by enemy?
-      * 
 * [ ] Graphs
       * [ ] Fulltime boss-dps
       * [ ] 10s DPS
