@@ -11,9 +11,11 @@ use fnv::FnvHashMap;
 
 use evtc::AbilityAndTotalStatistics;
 use evtc::Agent;
+use evtc::Boss;
 use evtc::Event;
 use evtc::EventType;
 use evtc::HitStatistics;
+use evtc::SkillList;
 
 use std::fs::File;
 use std::env;
@@ -128,13 +130,31 @@ struct AgentStatistics<'a> {
 #[derive(Debug, Clone, Serialize)]
 struct PlayerSummary<'a> {
     agent:              &'a Agent,
-    #[serde(rename="bossHits")]
+    #[serde(rename="hits")]
     hit_stats:          HitStatistics,
     #[serde(rename="bossHits")]
     boss_hit_stats:     HitStatistics,
     #[serde(rename="physicalBossHits")]
     physical_hit_stats: HitStatistics,
     agents:             Vec<AgentStatistics<'a>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct EncounterInfo {
+    #[serde(rename="logStart")]
+    log_start: u64,
+    #[serde(rename="logEnd")]
+    log_end:   u64,
+    boss:      Boss,
+    success:   bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct Data<'a> {
+    encounter: EncounterInfo,
+    players:   Vec<PlayerSummary<'a>>,
+    enemies:   Vec<&'a Agent>,
+    skills:    SkillList<'a>,
 }
 
 fn group_agents_by_species<'a, I: Iterator<Item=&'a Agent>>(iter: I) -> FnvHashMap<u16, Vec<&'a Agent>> {
@@ -151,22 +171,32 @@ fn parse_data(buffer: &[u8]) {
     let evtc = evtc::raw::transmute(buffer);
     let meta = evtc::Metadata::new(&evtc);
 
-    println!("Boss: {:?}, {}", meta.boss(), if meta.bosses().fold(true, |a, b| a && b.did_die()) { "success" } else { "failed" });
+    let bosses: Vec<_> = meta.bosses().collect();
 
-    let boss = meta.bosses().next().unwrap();
-
-    let player_summaries: Vec<_> = meta.agents().iter().filter(|a| a.is_player_character()).map(|a| PlayerSummary {
+    let player_summaries = meta.agents().iter().filter(|a| a.is_player_character()).map(|a| PlayerSummary {
         agent: a,
         hit_stats:          meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && e.is_damage()).collect(),
-        boss_hit_stats:     meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && e.targeting_agent(boss) && e.is_damage()).collect(),
-        physical_hit_stats: meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && e.targeting_agent(boss) && e.is_physical_hit()).collect(),
+        boss_hit_stats:     meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && bosses.iter().any(|b| e.targeting_agent(b)) && e.is_damage()).collect(),
+        physical_hit_stats: meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && bosses.iter().any(|b| e.targeting_agent(b)) && e.is_physical_hit()).collect(),
         agents:             (&[vec![a]]).iter().chain(group_agents_by_species(meta.agents_for_master(a)).values()).map(|minions| AgentStatistics {
             agent: minions[0],
-            stats: meta.encounter_events().filter(|e| minions.iter().any(|m| e.from_agent(m)) && e.targeting_agent(boss) && e.is_damage()).collect(),
+            stats: meta.encounter_events().filter(|e| minions.iter().any(|m| e.from_agent(m)) && bosses.iter().any(|b| e.targeting_agent(b)) && e.is_damage()).collect(),
         }).collect(),
     }).collect();
 
-    println!("{}", serde_json::to_string_pretty(&player_summaries).unwrap());
+    let data = Data {
+        encounter: EncounterInfo {
+            log_start: meta.log_start(),
+            log_end:   meta.log_end(),
+            boss:      meta.boss(),
+            success:   meta.bosses().fold(true, |a, b| a && b.did_die()),
+        },
+        players:   player_summaries,
+        enemies:   bosses,
+        skills:    meta.skill_list(),
+    };
+
+    println!("{}", serde_json::to_string_pretty(&data).unwrap());
 
         // println!("{} {}", a.name(), meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && e.targeting_agent(boss)).map(|e| e.damage()).sum(): i64);
 

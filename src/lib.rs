@@ -256,11 +256,15 @@ impl Default for AgentMetadata {
 pub struct Metadata<'a> {
     buffer: &'a raw::EvtcBuf<'a>,
     agents: Vec<Agent>,
+    start:  u64,
+    end:    u64,
 }
 
 impl<'a> Metadata<'a> {
     pub fn new(buffer: &'a raw::EvtcBuf) -> Self {
-        let mut map = FnvHashMap::<AgentId, AgentMetadata>::with_capacity_and_hasher(buffer.agents.len(), Default::default());
+        let mut map   = FnvHashMap::<AgentId, AgentMetadata>::with_capacity_and_hasher(buffer.agents.len(), Default::default());
+        let mut start = u64::MAX;
+        let mut end   = 0;
 
         for e in buffer.events.iter() {
             let master_agent = if e.master_source_instance() != InstanceId::empty() {
@@ -293,20 +297,27 @@ impl<'a> Metadata<'a> {
             if e.state_change() == CombatStateChange::ChangeDead {
                 meta.died = true;
             }
+
+            start = cmp::min(start, e.time());
+            end   = cmp::max(end, e.time());
         }
 
+/*
         for v in map.values().filter(|v| (v.master_instid != InstanceId::empty()) ^ (v.master_agent != AgentId::empty())) {
             // FIXME: Is this necessary?
             println!("{:?}", v);
         }
+        */
 
         // TODO: Filter agents?
         Metadata {
-            buffer: buffer,
+            buffer,
             agents: buffer.agents.iter().map(|agent| Agent {
                 inner: *agent,
                 meta:  map.get(&{agent.id}).map(|m| m.clone()).unwrap_or(Default::default()),
             }).collect(),
+            start,
+            end,
         }
     }
 
@@ -337,10 +348,46 @@ impl<'a> Metadata<'a> {
         self.buffer.skills.iter().chain(raw::UNLISTED_SKILLS.iter())
     }
 
+    pub fn skill_list(&self) -> SkillList {
+        SkillList {
+            skills: self.buffer.skills
+        }
+    }
+
     pub fn agents_for_master(&self, a: &Agent) -> impl Iterator<Item=&Agent> {
         let master_id = a.meta.instid;
 
         self.agents.iter().filter(move |a| a.meta.master_instid == master_id)
+    }
+
+    #[inline]
+    pub fn log_start(&self) -> u64 {
+        self.start
+    }
+
+    #[inline]
+    pub fn log_end(&self) -> u64 {
+        self.end
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct SkillList<'a> {
+    skills: &'a [Skill],
+}
+
+impl<'a> Serialize for SkillList<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+      where S: Serializer {
+        use serde::ser::SerializeMap;
+
+        let mut map = serializer.serialize_map(Some(self.skills.len()))?;
+
+        for s in self.skills {
+            map.serialize_entry(&s.id, s.name())?;
+        }
+
+        map.end()
     }
 }
 
@@ -575,18 +622,11 @@ impl HitStatistics {
 
         self.hits += 1;
 
-        if e.is_source_flanking() {
-            self.flanking += 1;
-        }
+        if e.is_source_flanking() { self.flanking += 1; }
+        if e.is_source_moving()   { self.moving += 1; }
+        if e.is_source_over90()   { self.scholar += 1; }
 
-        if e.is_source_moving() {
-            self.moving += 1;
-        }
-
-        if e.hit_result() == HitResult::Crit {
-            self.criticals += 1;
-        }
-
+        if e.hit_result() == HitResult::Crit { self.criticals += 1; }
         if e.hit_result() == HitResult::Glance    { self.glancing += 1; }
         if e.hit_result() == HitResult::Interrupt { self.interrupted += 1; }
         if e.hit_result() == HitResult::Block     { self.blocked += 1; }
