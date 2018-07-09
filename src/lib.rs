@@ -207,7 +207,7 @@ impl Serialize for Agent {
       where S: Serializer {
         use serde::ser::SerializeMap;
 
-        let mut map = serializer.serialize_map(Some(9))?;
+        let mut map = serializer.serialize_map(Some(10))?;
 
         map.serialize_entry("name",        self.inner.name())?;
         map.serialize_entry("accountName", self.inner.account_name())?;
@@ -217,6 +217,7 @@ impl Serialize for Agent {
         map.serialize_entry("profession",  &self.profession())?;
         map.serialize_entry("firstAware",  &self.meta.first_aware)?;
         map.serialize_entry("lastAware",   &self.meta.last_aware)?;
+        map.serialize_entry("isPov",       &self.meta.is_pov)?;
         map.serialize_entry("didDie",      &self.did_die())?;
 
         map.end()
@@ -237,6 +238,8 @@ struct AgentMetadata {
     master_agent:  AgentId,
     // If the agent died
     died:          bool,
+    // If this agent is the point of view
+    is_pov:        bool,
 }
 
 impl Default for AgentMetadata {
@@ -248,6 +251,7 @@ impl Default for AgentMetadata {
             master_instid: InstanceId::empty(),
             master_agent:  AgentId::empty(),
             died:          false,
+            is_pov:        false,
         }
     }
 }
@@ -280,11 +284,16 @@ impl<'a> Metadata<'a> {
                 master_instid: InstanceId::empty(),
                 master_agent:  AgentId::empty(),
                 died:          false,
+                is_pov:        false,
             });
 
             // Apparently if it is not a combat-state-change then it is wrong
             if e.event_type() == EventType::StateChange {
                 meta.instid = e.source_instance();
+
+                if e.state_change() == CombatStateChange::PointOfView {
+                    meta.is_pov = true;
+                }
             }
 
             meta.last_aware = e.time();
@@ -383,7 +392,7 @@ impl<'a> Serialize for SkillList<'a> {
 
         let mut map = serializer.serialize_map(Some(self.skills.len()))?;
 
-        for s in self.skills {
+        for s in self.skills.iter().filter(|s| s.id != 0) {
             map.serialize_entry(&s.id, s.name())?;
         }
 
@@ -726,6 +735,77 @@ impl<'a> FromIterator<&'a CombatEvent> for AbilityAndTotalStatistics {
         }
 
         s
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct TimeEntry {
+    /// Timestamp, rounded to seconds, in microseconds
+    time:        u64,
+    /// Health fraction, scaled 10000x
+    health:      Option<u64>,
+    /// Damage done during this second
+    damage:      Option<i64>,
+    /// Average DPS
+    dps:         Option<i64>,
+    boss_dps:    Option<i64>,
+    /// If the player got downed this second
+    downed:      bool,
+    /// If the player swapped weapon this second
+    weapon_swap: bool,
+}
+
+impl TimeEntry {
+    pub fn new() -> Self {
+        Self::with_time(0)
+    }
+
+    pub fn with_time(t: u64) -> Self {
+        TimeEntry {
+            time:        t,
+            health:      None,
+            damage:      None,
+            dps:         None,
+            boss_dps:    None,
+            downed:      false,
+            weapon_swap: false,
+        }
+    }
+}
+
+/// The time-series data for a player
+#[derive(Debug, Clone)]
+struct TimeSeries {
+    series: Vec<TimeEntry>,
+}
+
+impl TimeSeries {
+    fn new(meta: Metadata) ->Self {
+        assert!(meta.end > meta.start);
+
+        TimeSeries {
+            series: Vec::with_capacity(((meta.end - meta.start) / 1000) as usize),
+        }
+    }
+
+    #[inline]
+    fn parse<'a, I: IntoIterator<Item=&'a CombatEvent>>(&mut self, iter: I) {
+        let mut entry = TimeEntry::new();
+
+        for e in iter {
+            if entry.time != e.time() / 1000 {
+                self.series.push(entry);
+
+                entry = TimeEntry::with_time(e.time() / 1000);
+            }
+
+            match (e.state_change(),) {
+                (CombatStateChange::ChangeDown,)   => entry.downed = true,
+                (CombatStateChange::HealthUpdate,) => entry.health = Some(e.target_agent().0),
+                (CombatStateChange::WeapSwap,)     => entry.weapon_swap = true,
+                _ => {},
+            }
+        }
     }
 }
 

@@ -137,6 +137,8 @@ struct PlayerSummary<'a> {
     #[serde(rename="physicalBossHits")]
     physical_hit_stats: HitStatistics,
     agents:             Vec<AgentStatistics<'a>>,
+    //#[serde(flatten)]
+    //series:             TimeSeries,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -160,7 +162,7 @@ struct Data<'a> {
 fn group_agents_by_species<'a, I: Iterator<Item=&'a Agent>>(iter: I) -> FnvHashMap<u16, Vec<&'a Agent>> {
     let mut map = FnvHashMap::default();
 
-    for a in iter {
+    for a in iter.filter(|a| a.species_id() != None) {
         map.entry(a.species_id().unwrap()).or_insert(Vec::new()).push(a);
     }
 
