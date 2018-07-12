@@ -4,13 +4,13 @@ extern crate serde_derive;
 extern crate fnv;
 
 pub mod raw;
+pub mod statistics;
 
 use fnv::FnvHashMap;
 
 use serde::ser::Serialize;
 use serde::ser::Serializer;
 
-use std::iter::FromIterator;
 use std::cmp;
 use std::fmt;
 use std::u64;
@@ -19,7 +19,6 @@ use std::i64;
 use raw::CombatEvent;
 use raw::CombatStateChange;
 use raw::HitResult;
-use raw::IFF;
 use raw::Skill;
 
 /// The type of profession, includes NPCs and Gadgets
@@ -393,7 +392,7 @@ impl<'a> Serialize for SkillList<'a> {
         let mut map = serializer.serialize_map(Some(self.skills.len()))?;
 
         for s in self.skills.iter().filter(|s| s.id != 0) {
-            map.serialize_entry(&s.id, s.name())?;
+            map.serialize_entry(&{s.id}, s.name())?;
         }
 
         map.end()
@@ -571,173 +570,6 @@ pub trait Event {
     }
 }
 
-/// Statistics for physical hits
-#[derive(Debug, Copy, Clone, Serialize)]
-pub struct HitStatistics {
-    /// Total physical damage
-    #[serde(rename="totalDamage")]
-    total_damage:  i64,
-    /// Total physical damage wasted being blocked, evaded, interrupted, absorbed (including invuln) or missed
-    #[serde(rename="wastedDamage")]
-    wasted_damage: i64,
-    /// Total number of hits
-    hits:          u32,
-    /// Number of critical hits
-    criticals:     u32,
-    /// Number of hits which were done while source was flanking target
-    flanking:      u32,
-    /// Number of hits while source is over 90% HP
-    scholar:       u32,
-    /// Number of hits which were glancing hits
-    glancing:      u32,
-    /// Number of hits which were done while source was moving
-    moving:        u32,
-    /// Number of hits which were interrupted
-    interrupted:   u32,
-    /// Number of hits which got blocked by target
-    blocked:       u32,
-    /// Number of hits which got evaded by target
-    evaded:        u32,
-    /// Number of hits missed
-    missed:        u32,
-    /// Number of hits absorbed by target
-    absorbed:      u32,
-    /// Minimum hit damage
-    #[serde(rename="minDamage")]
-    min_damage:    i64,
-    /// Maximum hit damage
-    #[serde(rename="maxDamage")]
-    max_damage:    i64,
-}
-
-impl HitStatistics {
-    #[inline]
-    pub fn add_event(&mut self, e: &CombatEvent) {
-        self.total_damage += match e.hit_result() {
-              HitResult::Normal
-            | HitResult::Crit
-            | HitResult::Glance
-            | HitResult::KillingBlow => e.damage(),
-            _                        => 0,
-        };
-        self.wasted_damage += match e.hit_result() {
-              HitResult::Block
-            | HitResult::Evade
-            | HitResult::Interrupt
-            | HitResult::Absorb
-            | HitResult::Blind => e.damage(),
-            _                  => 0,
-        };
-
-        self.hits += 1;
-
-        if e.is_source_flanking() { self.flanking += 1; }
-        if e.is_source_moving()   { self.moving += 1; }
-        if e.is_source_over90()   { self.scholar += 1; }
-
-        if e.hit_result() == HitResult::Crit { self.criticals += 1; }
-        if e.hit_result() == HitResult::Glance    { self.glancing += 1; }
-        if e.hit_result() == HitResult::Interrupt { self.interrupted += 1; }
-        if e.hit_result() == HitResult::Block     { self.blocked += 1; }
-        if e.hit_result() == HitResult::Evade     { self.evaded += 1; }
-        if e.hit_result() == HitResult::Blind     { self.missed += 1; }
-        if e.hit_result() == HitResult::Absorb    { self.absorbed += 1; }
-
-        self.min_damage = cmp::min(self.min_damage, e.damage());
-        self.max_damage = cmp::max(self.max_damage, e.damage());
-    }
-}
-
-impl<'a> FromIterator<&'a CombatEvent> for HitStatistics {
-    #[inline]
-    fn from_iter<I: IntoIterator<Item=&'a CombatEvent>>(iter: I) -> Self {
-        let mut s: HitStatistics = Default::default();
-
-        for e in iter {
-            s.add_event(e);
-        }
-
-        s
-    }
-}
-
-impl Default for HitStatistics {
-    #[inline]
-    fn default() -> Self {
-        HitStatistics {
-            total_damage:  0,
-            wasted_damage: 0,
-            hits:          0,
-            criticals:     0,
-            flanking:      0,
-            scholar:       0,
-            glancing:      0,
-            moving:        0,
-            interrupted:   0,
-            blocked:       0,
-            evaded:        0,
-            missed:        0,
-            absorbed:      0,
-            min_damage:    i64::MAX,
-            max_damage:    0,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct AbilityStatistics {
-    abilities: FnvHashMap<u16, HitStatistics>,
-}
-
-impl AbilityStatistics {
-    #[inline]
-    pub fn add_event(&mut self, e: &CombatEvent) {
-        self.abilities.entry(e.skill_id()).or_insert(Default::default()).add_event(e);
-    }
-}
-
-impl<'a> FromIterator<&'a CombatEvent> for AbilityStatistics {
-    #[inline]
-    fn from_iter<I: IntoIterator<Item=&'a CombatEvent>>(iter: I) -> Self {
-        let mut s: AbilityStatistics = Default::default();
-
-        for e in iter {
-            s.add_event(e);
-        }
-
-        s
-    }
-}
-
-impl Default for AbilityStatistics {
-    #[inline]
-    fn default() -> Self {
-        AbilityStatistics {
-            abilities: FnvHashMap::default(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Default)]
-pub struct AbilityAndTotalStatistics {
-    total:     HitStatistics,
-    #[serde(flatten)]
-    abilities: AbilityStatistics,
-}
-
-impl<'a> FromIterator<&'a CombatEvent> for AbilityAndTotalStatistics {
-    fn from_iter<I: IntoIterator<Item=&'a CombatEvent>>(iter: I) -> Self {
-        let mut s: AbilityAndTotalStatistics = Default::default();
-
-        for e in iter {
-            s.total.add_event(e);
-            s.abilities.add_event(e);
-        }
-
-        s
-    }
-}
-
 #[derive(Debug, Clone, Serialize)]
 struct TimeEntry {
     /// Timestamp, rounded to seconds, in microseconds
@@ -756,11 +588,8 @@ struct TimeEntry {
 }
 
 impl TimeEntry {
-    pub fn new() -> Self {
-        Self::with_time(0)
-    }
-
-    pub fn with_time(t: u64) -> Self {
+    #[inline]
+    fn with_time(t: u64) -> Self {
         TimeEntry {
             time:        t,
             health:      None,
@@ -771,16 +600,26 @@ impl TimeEntry {
             weapon_swap: false,
         }
     }
+
+    #[inline]
+    fn has_data(&self) -> bool {
+           self.health.is_some()
+        || self.damage.is_some()
+        || self.dps.is_some()
+        || self.boss_dps.is_some()
+        || self.downed
+        || self.weapon_swap
+    }
 }
 
 /// The time-series data for a player
 #[derive(Debug, Clone)]
-struct TimeSeries {
+pub struct TimeSeries {
     series: Vec<TimeEntry>,
 }
 
 impl TimeSeries {
-    fn new(meta: Metadata) ->Self {
+    pub fn new(meta: &Metadata) -> Self {
         assert!(meta.end > meta.start);
 
         TimeSeries {
@@ -788,24 +627,54 @@ impl TimeSeries {
         }
     }
 
+    pub fn parse_agent(meta: &Metadata, agent: &Agent) -> Self {
+        let mut series = Self::new(meta);
+
+        series.parse(meta.encounter_events().filter(|e| e.from_agent_and_gadgets(agent)));
+
+        series
+    }
+
     #[inline]
-    fn parse<'a, I: IntoIterator<Item=&'a CombatEvent>>(&mut self, iter: I) {
-        let mut entry = TimeEntry::new();
+    pub fn parse<'a, E: 'a + Event, I: Iterator<Item=&'a E>>(&mut self, mut iter: I) {
+        let mut entry = if let Some(event) = iter.next() {
+            let mut entry = TimeEntry::with_time(event.time() / 1000);
+
+            self.parse_item(&mut entry, event);
+
+            entry
+        }
+        else {
+            return;
+        };
 
         for e in iter {
             if entry.time != e.time() / 1000 {
-                self.series.push(entry);
+                if entry.has_data() {
+                    self.series.push(entry);
+                }
 
                 entry = TimeEntry::with_time(e.time() / 1000);
             }
 
-            match (e.state_change(),) {
-                (CombatStateChange::ChangeDown,)   => entry.downed = true,
-                (CombatStateChange::HealthUpdate,) => entry.health = Some(e.target_agent().0),
-                (CombatStateChange::WeapSwap,)     => entry.weapon_swap = true,
-                _ => {},
-            }
+            self.parse_item(&mut entry, e);
         }
+    }
+
+    fn parse_item<'a, E: 'a + Event>(&mut self, entry: &mut TimeEntry, event: &E) {
+        match (event.state_change(),) {
+            (CombatStateChange::ChangeDown,)   => entry.downed      = true,
+            (CombatStateChange::HealthUpdate,) => entry.health      = Some(event.target_agent().0),
+            (CombatStateChange::WeapSwap,)     => entry.weapon_swap = true,
+            _ => {},
+        }
+    }
+}
+
+impl Serialize for TimeSeries {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+      where S: Serializer {
+        self.series.serialize(serializer)
     }
 }
 

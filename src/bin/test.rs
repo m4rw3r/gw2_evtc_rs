@@ -1,144 +1,91 @@
+#[macro_use]
 extern crate evtc;
 extern crate fnv;
 extern crate memmap;
-extern crate rayon;
-extern crate zip;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
+extern crate zip;
 
 use fnv::FnvHashMap;
 
-use evtc::AbilityAndTotalStatistics;
 use evtc::Agent;
 use evtc::Boss;
 use evtc::Event;
-use evtc::EventType;
-use evtc::HitStatistics;
+use evtc::statistics::Hits;
+use evtc::statistics::Abilities;
+use evtc::statistics::Sink;
 use evtc::SkillList;
+use evtc::TimeSeries;
 
 use std::fs::File;
 use std::env;
-use std::marker::PhantomData;
-use std::ops::AddAssign;
 
 use zip::ZipArchive;
 
-trait Task: Default {
-    fn parse_event(&mut self, time: u64, delta: u64, event: &evtc::raw::CombatEvent);
+/// Separated hit-statistics depending on damage-type
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct PowerCondiHits {
+    power: Hits,
+    condi: Hits,
+}
 
-    fn parse_events<'a, I>(&mut self, mut events: I)
-      where I: 'a,
-            I: 'a + Iterator<Item=&'a evtc::raw::CombatEvent> {
-        if let Some(first) = events.next() {
-            let mut time   = first.time();
-            let mut delta  = 0;
-
-            self.parse_event(time, delta, first);
-
-            for e in events {
-                if e.time() != time {
-                    delta = e.time() - time;
-                    time  = e.time();
-                }
-                else {
-                    delta = 0
-                }
-
-                self.parse_event(time, delta, e);
-            }
+// TODO: Should probably implement using derive
+impl<E> Sink<E> for PowerCondiHits
+  where E: Event {
+    #[inline]
+    fn add_event(&mut self, e: &E) {
+        if e. is_physical_hit() {
+            self.power.add_event(e);
         }
-    }
 
-    fn parse<'a, I>(events: I) -> Self
-      where I: 'a,
-            I: 'a + Iterator<Item=&'a evtc::raw::CombatEvent>,
-            Self: Default {
-        let mut data = Self::default();
-
-        data.parse_events(events);
-
-        data
-    }
-}
-
-trait Property {
-    type Type;
-
-    fn get_data(event: &evtc::raw::CombatEvent) -> Self::Type;
-}
-
-/*
-#[derive(Debug)]
-struct SumValue(i64);
-
-impl Default for SumValue {
-    fn default() -> Self {
-        SumValue(0)
-    }
-}
-
-impl Task for SumValue {
-    fn parse_event(&mut self, _time: u64, _delta: u64, event: &evtc::raw::CombatEvent) {
-        self.0 += event.value();
-    }
-}
-
-#[derive(Debug)]
-struct Sum<P: Property> {
-    pub value: P::Type,
-    _type: PhantomData<P>,
-}
-
-impl<P, T> Default for Sum<P>
-  where P: Property<Type=T>,
-        T: AddAssign + Default {
-    fn default() -> Self {
-        Sum {
-            value: Default::default(),
-            _type: PhantomData,
+        if e.is_condition_tick() {
+            self.condi.add_event(e);
         }
     }
 }
 
-impl<P, T> Task for Sum<P>
-  where P: Property<Type=T>,
-        T: AddAssign + Default {
-    fn parse_event(&mut self, _time: u64, _delta: u64, event: &evtc::raw::CombatEvent) {
-        self.value += P::get_data(event);
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct AbilityAndTotal {
+    total:     Hits,
+    abilities: Abilities,
+}
+
+impl<E> Sink<E> for AbilityAndTotal
+  where E: Event {
+    #[inline]
+    fn add_event(&mut self, e: &E) {
+        self.total.add_event(e);
+        self.abilities.add_event(e);
     }
 }
 
-struct Value;
-
-impl Property for Value {
-    type Type = i64;
-
-    fn get_data(event: &evtc::raw::CombatEvent) -> Self::Type {
-        event.value()
-    }
-}
-*/
+// Should probably be a part of the derive
+sink_from_iter!(PowerCondiHits);
+sink_from_iter!(AbilityAndTotal);
 
 #[derive(Debug, Clone, Serialize)]
 struct AgentStatistics<'a> {
     agent:          &'a Agent,
     #[serde(rename="bossHits")]
-    stats:          AbilityAndTotalStatistics,
+    stats:          AbilityAndTotal,
 }
 
 #[derive(Debug, Clone, Serialize)]
 struct PlayerSummary<'a> {
     agent:              &'a Agent,
     #[serde(rename="hits")]
-    hit_stats:          HitStatistics,
+    hit_stats:          PowerCondiHits,
     #[serde(rename="bossHits")]
-    boss_hit_stats:     HitStatistics,
-    #[serde(rename="physicalBossHits")]
-    physical_hit_stats: HitStatistics,
+    boss_hit_stats:     PowerCondiHits,
     agents:             Vec<AgentStatistics<'a>>,
-    //#[serde(flatten)]
-    //series:             TimeSeries,
+    series:             TimeSeries,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct BossSummary<'a> {
+    agent:  &'a Agent,
+    series: TimeSeries,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -155,7 +102,7 @@ struct EncounterInfo {
 struct Data<'a> {
     encounter: EncounterInfo,
     players:   Vec<PlayerSummary<'a>>,
-    enemies:   Vec<&'a Agent>,
+    enemies:   Vec<BossSummary<'a>>,
     skills:    SkillList<'a>,
 }
 
@@ -177,13 +124,18 @@ fn parse_data(buffer: &[u8]) {
 
     let player_summaries = meta.agents().iter().filter(|a| a.is_player_character()).map(|a| PlayerSummary {
         agent: a,
-        hit_stats:          meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && e.is_damage()).collect(),
-        boss_hit_stats:     meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && bosses.iter().any(|b| e.targeting_agent(b)) && e.is_damage()).collect(),
-        physical_hit_stats: meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && bosses.iter().any(|b| e.targeting_agent(b)) && e.is_physical_hit()).collect(),
+        hit_stats:          meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a)).collect(),
+        boss_hit_stats:     meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && bosses.iter().any(|b| e.targeting_agent(b))).collect(),
         agents:             (&[vec![a]]).iter().chain(group_agents_by_species(meta.agents_for_master(a)).values()).map(|minions| AgentStatistics {
             agent: minions[0],
             stats: meta.encounter_events().filter(|e| minions.iter().any(|m| e.from_agent(m)) && bosses.iter().any(|b| e.targeting_agent(b)) && e.is_damage()).collect(),
         }).collect(),
+        series:    TimeSeries::parse_agent(&meta, a),
+    }).collect();
+
+    let boss_summaries: Vec<_> = meta.bosses().map(|b| BossSummary {
+        agent: b,
+        series: TimeSeries::parse_agent(&meta, b),
     }).collect();
 
     let data = Data {
@@ -194,7 +146,7 @@ fn parse_data(buffer: &[u8]) {
             success:   meta.bosses().fold(true, |a, b| a && b.did_die()),
         },
         players:   player_summaries,
-        enemies:   bosses,
+        enemies:   boss_summaries,
         skills:    meta.skill_list(),
     };
 
