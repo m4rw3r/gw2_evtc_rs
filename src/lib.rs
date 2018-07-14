@@ -184,10 +184,16 @@ impl Agent {
         }
     }
 
+    /// Returns the time of death if the agent died during the encounter
+    #[inline(always)]
+    pub fn died(&self) -> Option<u64> {
+        self.meta.died
+    }
+
     /// Returns true if the agent died during the encounter
     #[inline(always)]
     pub fn did_die(&self) -> bool {
-        self.meta.died
+        self.meta.died.is_some()
     }
 
     #[inline(always)]
@@ -217,7 +223,7 @@ impl Serialize for Agent {
         map.serialize_entry("firstAware",  &self.meta.first_aware)?;
         map.serialize_entry("lastAware",   &self.meta.last_aware)?;
         map.serialize_entry("isPov",       &self.meta.is_pov)?;
-        map.serialize_entry("didDie",      &self.did_die())?;
+        map.serialize_entry("diedAt",      &self.meta.died)?;
 
         map.end()
     }
@@ -236,7 +242,7 @@ struct AgentMetadata {
     // Owning address
     master_agent:  AgentId,
     // If the agent died
-    died:          bool,
+    died:          Option<u64>,
     // If this agent is the point of view
     is_pov:        bool,
 }
@@ -249,7 +255,7 @@ impl Default for AgentMetadata {
             last_aware:    u64::MAX,
             master_instid: InstanceId::empty(),
             master_agent:  AgentId::empty(),
-            died:          false,
+            died:          None,
             is_pov:        false,
         }
     }
@@ -282,7 +288,7 @@ impl<'a> Metadata<'a> {
                 last_aware:    e.time(),
                 master_instid: InstanceId::empty(),
                 master_agent:  AgentId::empty(),
-                died:          false,
+                died:          None,
                 is_pov:        false,
             });
 
@@ -303,7 +309,7 @@ impl<'a> Metadata<'a> {
             }
 
             if e.state_change() == CombatStateChange::ChangeDead {
-                meta.died = true;
+                meta.died = Some(e.time());
             }
 
             start = cmp::min(start, e.time());

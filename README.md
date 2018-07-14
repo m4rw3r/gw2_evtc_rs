@@ -7,13 +7,13 @@
   * [ ] Weapons used?
   * [x] Character name
   * [x] Account name
-  * [ ] Point of View
+  * [x] Point of View
   * [x] Boss DPS
     * [x] Physical
-    * [ ] Condi
+    * [x] Condi
   * [x] All DPS
-    * [ ] Physical
-    * [ ] Condi
+    * [x] Physical
+    * [x] Condi
   * [ ] Incoming total damage
   * [ ] Wasted time casting things
   * [ ] Failed mechanics
@@ -39,6 +39,9 @@
   * [ ] Boons stripped
   * [ ] Absorbed by enemy?
   * [ ] Rotation
+    * [ ] Info about quickness y/n on cast
+    * [ ] Info about aborted casts
+    * [ ] Info about boons on boon-sharing stuff which requires boons
 * [ ] Graphs
   * [ ] Fulltime boss-dps
   * [ ] 10s DPS
