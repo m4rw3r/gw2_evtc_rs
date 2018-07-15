@@ -94,7 +94,7 @@ impl TimeSeries {
     pub fn parse_agent(meta: &Metadata, agent: &Agent) -> Self {
         let mut series = Self::new(meta);
 
-        series.parse(meta.encounter_events().filter(|e| e.event.from_agent_and_gadgets(agent)));
+        series.parse(meta.encounter_events().from_agent_and_gadgets(agent));
 
         series
     }
