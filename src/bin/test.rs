@@ -11,12 +11,13 @@ use fnv::FnvHashMap;
 
 use evtc::Agent;
 use evtc::Boss;
-use evtc::Event;
+use evtc::IntoEvent;
 use evtc::raw::Language;
 use evtc::statistics::Hits;
 use evtc::statistics::Abilities;
 use evtc::statistics::Sink;
 use evtc::SkillList;
+use evtc::SpeciesId;
 use evtc::TimeSeries;
 
 use std::fs::File;
@@ -33,7 +34,7 @@ pub struct PowerCondiHits {
 
 // TODO: Should probably implement using derive
 impl<E> Sink<E> for PowerCondiHits
-  where E: Event {
+  where E: IntoEvent {
     #[inline]
     fn add_event(&mut self, e: &E) {
         if e. is_physical_hit() {
@@ -53,7 +54,7 @@ pub struct AbilityAndTotal {
 }
 
 impl<E> Sink<E> for AbilityAndTotal
-  where E: Event {
+  where E: IntoEvent {
     #[inline]
     fn add_event(&mut self, e: &E) {
         self.total.add_event(e);
@@ -115,7 +116,7 @@ struct Data<'a> {
     skills:    SkillList<'a>,
 }
 
-fn group_agents_by_species<'a, I: Iterator<Item=&'a Agent>>(iter: I) -> FnvHashMap<u16, Vec<&'a Agent>> {
+fn group_agents_by_species<'a, I: Iterator<Item=&'a Agent>>(iter: I) -> FnvHashMap<SpeciesId, Vec<&'a Agent>> {
     let mut map = FnvHashMap::default();
 
     for a in iter.filter(|a| a.species_id() != None) {
@@ -164,29 +165,6 @@ fn parse_data(buffer: &[u8], logname: String) {
     };
 
     println!("{}", serde_json::to_string_pretty(&data).unwrap());
-
-        // println!("{} {}", a.name(), meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && e.targeting_agent(boss)).map(|e| e.damage()).sum(): i64);
-
-        // println!("{} {:?}", a.name(), HitStatistics::from_iterator(meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && e.targeting_agent(boss) && e.is_physical_hit())));
-
-/*
-    println!("{:?}", meta);
-
-    rayon::scope(|s| {
-        for a in evtc.agents {
-            s.spawn(move |_| {
-                println!("{:?} {:?}", a.name(), Sum::<Value>::parse(evtc.events.iter().filter(|e| e.src_agent == a.id && ! e.is_buff() && e.value > 0)).value);
-
-                /*let mut damage = SumValue::default();
-
-                damage.parse_events(evtc.events.iter().filter(|e| e.src_agent == a.id && ! e.is_buff()));
-
-                println!("{:?} {:?}", a.name(), damage.0);
-                */
-            })
-        }
-    })
-    */
 }
 
 fn main() {

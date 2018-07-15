@@ -1,4 +1,4 @@
-use Event;
+use IntoEvent;
 
 use raw::HitResult;
 
@@ -12,7 +12,7 @@ use std::i64;
 
 /// A sink for statistics
 pub trait Sink<E>: Default
-  where E: Event {
+  where E: IntoEvent {
     fn add_event(&mut self, e: &E);
 }
 
@@ -20,7 +20,7 @@ pub trait Sink<E>: Default
 macro_rules! sink_from_iter {
     ($ty:ty) => {
 impl<'a, E> ::std::iter::FromIterator<&'a E> for $ty
-  where E: 'a + Event {
+  where E: 'a + IntoEvent {
     fn from_iter<I: IntoIterator<Item=&'a E>>(iter: I) -> Self {
         let mut s: $ty = Default::default();
 
@@ -100,7 +100,7 @@ impl Default for Hits {
 }
 
 impl<E> Sink<E> for Hits
-  where E: Event {
+  where E: IntoEvent {
     #[inline]
     fn add_event(&mut self, e: &E) {
         self.total_damage += match e.hit_result() {
@@ -160,7 +160,7 @@ impl Default for Abilities {
 }
 
 impl<E> Sink<E> for Abilities
-  where E: Event {
+  where E: IntoEvent {
     #[inline]
     fn add_event(&mut self, e: &E) {
         self.abilities.entry(e.skill_id()).or_insert(Default::default()).add_event(e);
