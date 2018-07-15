@@ -25,7 +25,7 @@ const Agent = ({ agent, bossHits: { abilities, total }, abilityNames, skillData 
     <td>{maxDamage}</td>
   </tr>;
 
-  return <div>
+  return <div class="agent">
     <table class="ability-list">
       <tr>
         <th></th>
@@ -72,15 +72,19 @@ export default class PlayerSummary extends Component {
   componentDidUpdate(prebProps) {
     if(prebProps.player !== this.props.player) {
       this.loadSkills(this.props.player);
+
+      this.setState({
+        selectedAgent: null
+      });
     }
   }
-  render({ player, skills }, { skillData }, { selectedAgent }) {
+  render({ player, skills }, { skillData, selectedAgent }) {
     if( ! player) {
       return <div>No player found</div>;
     }
 
     const { agent: { name, profession }, agents } = player
-    const currentAgent = agents.find(a => a.speciesId === selectedAgent);
+    const currentAgent = agents.find(a => a.agent.speciesId === selectedAgent);
 
     return <div class="player-summary">
       <h3>
@@ -89,17 +93,19 @@ export default class PlayerSummary extends Component {
         <span>{name}</span>
       </h3>
 
-      <div>
-        <ul class="agent-selection">
-          {agents.map(a => <li>{a.agent.profession ? <Profession class="agent-profession" profession={a.agent.profession} /> : null }{a.agent.name}</li>)}
-        </ul>
+      {agents.length > 1 ? 
+      <ul class="agent-selection">
+        {agents.map(({ agent }) => <li onClick={() => this.setState({ selectedAgent: agent.speciesId })}
+            class={agent.speciesId === selectedAgent ? "selected" : null }>
+            {agent.profession !== "NonPlayableCharacter" ? <Profession class="agent-profession" profession={agent.profession} /> : null }{agent.name}
+          </li>)}
+      </ul> : null}
 
-        <div>
-          <Agent {...currentAgent} abilityNames={skills} skillData={skillData} />
-        </div>
+      <Agent {...currentAgent} abilityNames={skills} skillData={skillData} />
 
-        {JSON.stringify(currentAgent)}
-      </div>
+      <pre>
+        {JSON.stringify(currentAgent, null, 2)}
+      </pre>
     </div>;
   }
 }

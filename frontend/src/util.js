@@ -1,5 +1,6 @@
 
 const skills = [
+  // Conditions
   { name: "Burning", id: 737, type: "Boon", boonStack: "Intensity", maxStacks: 1500, boonType: "Condition", icon: "https://wiki.guildwars2.com/images/thumb/4/45/Burning.png/20px-Burning.png" },
   { name: "Bleeding", id: 736, type: "Boon", boonStack: "Intensity", maxStacks: 1500, boonType: "Condition", icon: "https://wiki.guildwars2.com/images/thumb/3/33/Bleeding.png/20px-Bleeding.png" },
   { name: "Confusion", id: 861, type: "Boon", boonStack: "Intensity", maxStacks: 1500, boonType: "Condition", icon: "https://wiki.guildwars2.com/images/thumb/e/e6/Confusion.png/20px-Confusion.png" },
@@ -15,6 +16,7 @@ const skills = [
   { name: "Taunt", id: 46996, type: "Boon", boonStack: "Duration", maxStacks: 5, boonType: "Condition", icon: "https://wiki.guildwars2.com/images/thumb/c/cc/Taunt.png/20px-Taunt.png" },
   { name: "Vulnerability", id: 738, type: "Boon", boonStack: "Intensity", maxStacks: 25, boonType: "Condition", icon: "https://wiki.guildwars2.com/images/thumb/a/af/Vulnerability.png/20px-Vulnerability.png" },
   { name: "Retaliation", id: 873, type: "Boon", boonStack: "Duration", maxStacks: 5, boonType: "Condition", icon: "https://wiki.guildwars2.com/images/5/53/Retaliation.png" },
+  // TODO: More stuff
 ];
 const skillData = {};
 let   queue     = [];

@@ -1,7 +1,7 @@
 
 .player-summary
-  margin: 1em
-  font-size: 1.2em
+  font-size:       1.2em
+  justify-content: center
 
   h3
     text-align:      center
@@ -9,6 +9,7 @@
     display:         flex
     align-items:     center
     justify-content: center
+    margin:          1em
 
     .profession
       height: 2em
@@ -19,16 +20,31 @@
     font-size:       1.5em
     display:         flex
     align-items:     center
-    justify-content: left
+    justify-content: center
 
     li
-      display:     flex
-      align-items: center
+      flex:            1
+      display:         flex
+      align-items:     center
+      padding:         1em
+      justify-content: center
+      background:      $inactive
+
+      &:hover
+        cursor:     pointer
+        background: $active
+
+      &.selected
+        background: $active
 
   .agent-profession
     width:  1em
     height: 1em
-    margin: 1rem
+    margin: 0 1rem
+
+  .agent
+    display:         flex
+    justify-content: center
 
   .ability-list
     tr
