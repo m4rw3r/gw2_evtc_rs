@@ -12,6 +12,7 @@ use fnv::FnvHashMap;
 use evtc::Agent;
 use evtc::Boss;
 use evtc::Event;
+use evtc::raw::Language;
 use evtc::statistics::Hits;
 use evtc::statistics::Abilities;
 use evtc::statistics::Sink;
@@ -91,11 +92,19 @@ struct BossSummary<'a> {
 #[derive(Debug, Clone, Serialize)]
 struct EncounterInfo {
     #[serde(rename="logStart")]
-    log_start: u64,
+    log_start:    u32,
     #[serde(rename="logEnd")]
-    log_end:   u64,
-    boss:      Boss,
-    success:   bool,
+    log_end:      u32,
+    #[serde(rename="gameBuild")]
+    game_build:   u64,
+    #[serde(rename="lang")]
+    game_lang:    Language,
+    #[serde(rename="serverShard")]
+    server_shard: u64,
+    #[serde(rename="logName")]
+    log_name:     String,
+    boss:         Boss,
+    success:      bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -116,7 +125,7 @@ fn group_agents_by_species<'a, I: Iterator<Item=&'a Agent>>(iter: I) -> FnvHashM
     map
 }
 
-fn parse_data(buffer: &[u8]) {
+fn parse_data(buffer: &[u8], logname: String) {
     let evtc = evtc::raw::transmute(buffer);
     let meta = evtc::Metadata::new(&evtc);
 
@@ -140,10 +149,14 @@ fn parse_data(buffer: &[u8]) {
 
     let data = Data {
         encounter: EncounterInfo {
-            log_start: meta.log_start(),
-            log_end:   meta.log_end(),
-            boss:      meta.boss(),
-            success:   meta.bosses().fold(true, |a, b| a && b.did_die()),
+            log_start:    meta.log_start(),
+            log_end:      meta.log_end(),
+            log_name:     logname,
+            game_build:   meta.game_build(),
+            game_lang:    meta.language(),
+            server_shard: meta.server_shard(),
+            boss:         meta.boss(),
+            success:      meta.bosses().fold(true, |a, b| a && b.did_die()),
         },
         players:   player_summaries,
         enemies:   boss_summaries,
@@ -189,11 +202,11 @@ fn main() {
 
         file.read_to_end(&mut buffer).expect("Failed to read first file in arcive");
 
-        parse_data(&buffer[..]);
+        parse_data(&buffer[..], name);
     }
     else {
         let mmap = unsafe { memmap::Mmap::map(&file).expect("Failed to mmap() file") };
 
-        parse_data(&mmap[..]);
+        parse_data(&mmap[..], name);
     }
 }

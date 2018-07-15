@@ -14,11 +14,13 @@ use serde::ser::Serializer;
 use std::cmp;
 use std::fmt;
 use std::u64;
+use std::u32;
 use std::i64;
 
 use raw::CombatEvent;
 use raw::CombatStateChange;
 use raw::HitResult;
+use raw::Language;
 use raw::Skill;
 
 /// The type of profession, includes NPCs and Gadgets
@@ -140,7 +142,7 @@ pub struct Agent {
 
 impl fmt::Display for Agent {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} ({}) {} {} [t={} h={} c={}]", self.inner.name(), self.inner.account_name(), self.inner.profession(), self.inner.subgroup(), {self.inner.toughness}, {self.inner.healing}, {self.inner.condition})
+        write!(f, "{} ({}) {} {} [t={} h={} c={}]", self.inner.name(), self.inner.account_name(), self.inner.profession(), self.inner.subgroup(), {self.inner.toughness}, {self.inner.healing}, {self.inner.condition_dmg})
     }
 }
 
@@ -212,18 +214,22 @@ impl Serialize for Agent {
       where S: Serializer {
         use serde::ser::SerializeMap;
 
-        let mut map = serializer.serialize_map(Some(10))?;
+        let mut map = serializer.serialize_map(Some(14))?;
 
-        map.serialize_entry("name",        self.inner.name())?;
-        map.serialize_entry("accountName", self.inner.account_name())?;
-        map.serialize_entry("subgroup",    self.inner.subgroup())?;
-        map.serialize_entry("isPlayer",    &self.is_player_character())?;
-        map.serialize_entry("speciesId",   &self.species_id())?;
-        map.serialize_entry("profession",  &self.profession())?;
-        map.serialize_entry("firstAware",  &self.meta.first_aware)?;
-        map.serialize_entry("lastAware",   &self.meta.last_aware)?;
-        map.serialize_entry("isPov",       &self.meta.is_pov)?;
-        map.serialize_entry("diedAt",      &self.meta.died)?;
+        map.serialize_entry("name",          self.inner.name())?;
+        map.serialize_entry("accountName",   self.inner.account_name())?;
+        map.serialize_entry("subgroup",      self.inner.subgroup())?;
+        map.serialize_entry("isPlayer",      &self.is_player_character())?;
+        map.serialize_entry("speciesId",     &self.species_id())?;
+        map.serialize_entry("profession",    &self.profession())?;
+        map.serialize_entry("toughness",     &{self.inner.toughness})?;
+        map.serialize_entry("concentration", &{self.inner.concentration})?;
+        map.serialize_entry("healing",       &{self.inner.healing})?;
+        map.serialize_entry("conditionDmg",  &{self.inner.condition_dmg})?;
+        map.serialize_entry("firstAware",    &self.meta.first_aware)?;
+        map.serialize_entry("lastAware",     &self.meta.last_aware)?;
+        map.serialize_entry("isPov",         &self.meta.is_pov)?;
+        map.serialize_entry("diedAt",        &self.meta.died)?;
 
         map.end()
     }
@@ -265,15 +271,21 @@ impl Default for AgentMetadata {
 pub struct Metadata<'a> {
     buffer: &'a raw::EvtcBuf<'a>,
     agents: Vec<Agent>,
-    start:  u64,
-    end:    u64,
+    start:  u32,
+    end:    u32,
+    lang:   Language,
+    build:  u64,
+    shard:  u64,
 }
 
 impl<'a> Metadata<'a> {
     pub fn new(buffer: &'a raw::EvtcBuf) -> Self {
         let mut map   = FnvHashMap::<AgentId, AgentMetadata>::with_capacity_and_hasher(buffer.agents.len(), Default::default());
-        let mut start = u64::MAX;
+        let mut start = u32::MAX;
         let mut end   = 0;
+        let mut shard = 0;
+        let mut build = 0;
+        let mut lang  = Language::English;
 
         for e in buffer.events.iter() {
             let master_agent = if e.master_source_instance() != InstanceId::empty() {
@@ -308,12 +320,15 @@ impl<'a> Metadata<'a> {
                 meta.master_agent  = master_agent.unwrap_or(meta.master_agent);
             }
 
-            if e.state_change() == CombatStateChange::ChangeDead {
-                meta.died = Some(e.time());
+            match e.state_change() {
+                CombatStateChange::ChangeDead => meta.died = Some(e.time()),
+                CombatStateChange::LogStart   => start = e.value_as_time(),
+                CombatStateChange::LogEnd     => end   = e.value_as_time(),
+                CombatStateChange::Language   => lang  = Language::from_agent_id(e.source_agent()),
+                CombatStateChange::GwBuild    => build = e.source_agent().0,
+                CombatStateChange::ShardId    => shard = e.source_agent().0,
+                _                             => {},
             }
-
-            start = cmp::min(start, e.time());
-            end   = cmp::max(end, e.time());
         }
 
 /*
@@ -332,6 +347,9 @@ impl<'a> Metadata<'a> {
             }).collect(),
             start,
             end,
+            lang,
+            build,
+            shard,
         }
     }
 
@@ -375,13 +393,28 @@ impl<'a> Metadata<'a> {
     }
 
     #[inline]
-    pub fn log_start(&self) -> u64 {
+    pub fn log_start(&self) -> u32 {
         self.start
     }
 
     #[inline]
-    pub fn log_end(&self) -> u64 {
+    pub fn log_end(&self) -> u32 {
         self.end
+    }
+
+    #[inline]
+    pub fn language(&self) -> Language {
+        self.lang
+    }
+
+    #[inline]
+    pub fn server_shard(&self) -> u64 {
+        self.shard
+    }
+
+    #[inline]
+    pub fn game_build(&self) -> u64 {
+        self.build
     }
 }
 
@@ -513,6 +546,12 @@ pub trait Event {
 
     #[inline]
     fn skill_id(&self) -> u16;
+
+    #[inline]
+    fn value_as_time(&self) -> u32;
+
+    #[inline]
+    fn buffdmg_as_time(&self) -> u32;
 
     #[inline]
     fn targeting_agent(&self, agent: &Agent) -> bool {

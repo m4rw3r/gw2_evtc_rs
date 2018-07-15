@@ -55,7 +55,7 @@ pub struct Agent {
     pub concentration: u16,
     pub healing:       u16,
     _pad2_1:           u16,
-    pub condition:     u16,
+    pub condition_dmg:  u16,
     _pad2_2:           u16,
     // Character name [null] Account name [null] Subgroup string literal [null]
     name:            [u8; 68],
@@ -63,8 +63,8 @@ pub struct Agent {
 
 impl fmt::Debug for Agent {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Agent({}: {} ({}) {}, is_elite: {}, toughness: {}, healing: {}, condition: {})",
-            {self.id}, self.name(), self.account_name(), self.profession(), {self.is_elite}, {self.toughness}, {self.healing}, {self.condition})
+        write!(f, "Agent({}: {} ({}) {}, is_elite: {}, toughness: {}, healing: {}, condition_dmg: {})",
+            {self.id}, self.name(), self.account_name(), self.profession(), {self.is_elite}, {self.toughness}, {self.healing}, {self.condition_dmg})
     }
 }
 
@@ -149,6 +149,25 @@ impl fmt::Debug for Skill {
 impl Skill {
     pub fn name(&self) -> &str {
         unsafe { str::from_utf8_unchecked(self.name.split(|&c| c == 0).next().expect("Invalid C-string in EVTC Skill data")) }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+pub enum Language {
+    English = 0,
+    French  = 2,
+    German  = 3,
+    Spanish = 4,
+}
+
+impl Language {
+    pub fn from_agent_id(id: AgentId) -> Language {
+        match id.0 {
+            2 => Language::French,
+            3 => Language::German,
+            4 => Language::Spanish,
+            _ => Language::English,
+        }
     }
 }
 
@@ -404,6 +423,18 @@ impl Event for CombatEvent {
     #[inline]
     fn skill_id(&self) -> u16 {
         self.skill_id
+    }
+
+    /// Only valid if state_change() is LogStart or LogEnd
+    #[inline]
+    fn value_as_time(&self) -> u32 {
+        unsafe { mem::transmute(self.value) }
+    }
+
+    /// Only valid if state_change() is LogStart or LogEnd
+    #[inline]
+    fn buffdmg_as_time(&self) -> u32 {
+        unsafe { mem::transmute(self.buff_dmg) }
     }
 }
 
