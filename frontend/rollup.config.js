@@ -3,7 +3,6 @@ import resolve    from "rollup-plugin-node-resolve";
 import gzip       from "rollup-plugin-gzip";
 import { uglify } from "rollup-plugin-uglify";
 import replace    from "rollup-plugin-replace";
-import reactSvg   from "rollup-plugin-react-svg";
 
 const production = process.env.NODE_ENV === "production";
 

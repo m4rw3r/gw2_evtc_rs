@@ -1,0 +1,58 @@
+
+.player-list
+  display:        flex
+  // flex:           auto
+  flex-direction: column
+  background:     $inactive
+
+  .subgroup
+    margin-bottom: 1em
+
+    &:before
+      content:    ""
+      display:    block
+      width:      90%
+      margin:     0 auto
+      border-top: 0.1em solid #444
+
+  .player
+    display:     flex
+    flex:        none
+    align-items: center
+    padding:     1em
+    margin:      0
+
+    &.active
+      background: $active
+
+    &:hover
+      background: $active
+      cursor:     pointer
+
+    .profession
+      flex:   0 0 auto
+      width:  3em
+      height: 3em
+      margin: 0 1em 0 0
+
+    .name
+      min-width: 10em
+      margin:    0 1rem
+      flex:      1
+
+    h3
+      font:   1.5rem bold
+      margin: 0 0 0.5rem
+
+    .accountName
+      margin: 0.5rem 0
+
+    .info
+      flex:        initial
+      display:     flex
+      flex-wrap:   wrap
+      align-items: start
+
+      span
+        font-weight: bold
+        align-items: center

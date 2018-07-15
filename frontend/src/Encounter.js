@@ -3,7 +3,7 @@ import { h
        } from "preact";
 
 export default class Encounter extends Component {
-  render({ boss, success, logName, logStart, duration }) {
+  render({ boss, success, logName, logStart }, _, { duration }) {
     const className = success ? "success" : "failure";
 
     const minutes = (duration / 60)|0;
