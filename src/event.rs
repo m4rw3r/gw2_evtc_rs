@@ -1,3 +1,5 @@
+use Agent;
+
 use types::AgentId;
 use types::InstanceId;
 use raw::Language;
@@ -6,6 +8,13 @@ use raw::Language;
 pub struct Event {
     pub time:  u64,
     pub event: EventType,
+}
+
+impl Event {
+    #[inline]
+    pub fn from_agent_and_gadgets(&self, agent: &Agent) -> bool {
+        self.event.from_agent_and_gadgets(agent)
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -22,6 +31,16 @@ pub enum EventType {
         master_instance: Option<InstanceId>,
         event:           AgentEvent,
     },
+}
+
+impl EventType {
+    #[inline]
+    pub fn from_agent_and_gadgets(&self, agent: &Agent) -> bool {
+        match self {
+            EventType::Agent { agent: a, master_instance: i, .. } => *a == agent.id() || *i == Some(agent.instance_id()),
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -98,4 +117,13 @@ pub enum HitType {
     Absorb, 
     Blind, 
     KillingBlow, 
+}
+
+impl HitType {
+    pub fn is_zero(self) -> bool {
+        match self {
+            HitType::Block | HitType::Evade | HitType::Interrupt | HitType::Absorb | HitType::Blind => true,
+            _ => false,
+        }
+    }
 }

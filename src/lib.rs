@@ -8,18 +8,15 @@ mod types;
 mod metadata;
 pub mod raw;
 pub mod statistics;
+pub mod iterator;
 
 use serde::ser::Serialize;
 use serde::ser::Serializer;
 
 use std::i64;
 use std::u64;
-use std::u32;
-use std::mem;
 
-use raw::CombatStateChange;
-use raw::HitResult;
-
+pub use iterator::EventIteratorExt;
 pub use types::Profession;
 pub use types::Boss;
 pub use types::InstanceId;
@@ -32,131 +29,9 @@ pub use metadata::Metadata;
 pub use metadata::SkillList;
 pub use event::*;
 
-
 pub trait IntoEvent {
+    #[inline]
     fn to_event(&self) -> Event;
-
-    #[inline]
-    fn time(&self) -> u64;
-
-    #[inline]
-    fn event_type(&self) -> ET;
-
-    #[inline]
-    fn source_agent(&self) -> AgentId;
-
-    // TODO: Maybe option?
-    #[inline]
-    fn target_agent(&self) -> AgentId;
-
-    // TODO: Maybe option?
-    #[inline]
-    fn target_instance(&self) -> InstanceId;
-
-    // TODO: Maybe option?
-    #[inline]
-    fn source_instance(&self) -> InstanceId;
-
-    // TODO: Maybe option?
-    #[inline]
-    fn master_source_instance(&self) -> InstanceId;
-
-    // TODO
-
-    /// Returns the damage done by this event
-    /// 
-    /// Normalized across physical hits and buff events.
-    #[inline]
-    fn damage(&self) -> i64;
-
-    #[inline]
-    fn hit_result(&self) -> HitResult;
-
-    #[inline]
-    fn is_source_flanking(&self) -> bool;
-
-    #[inline]
-    fn is_source_moving(&self) -> bool;
-
-    // TODO: Maybe option?
-    #[inline]
-    fn buff_damage(&self) -> i64;
-
-    #[inline]
-    fn state_change(&self) -> CombatStateChange;
-
-    #[inline]
-    fn is_source_over90(&self) -> bool;
-
-    #[inline]
-    fn skill_id(&self) -> u16;
-
-    #[inline]
-    fn value_as_time(&self) -> u32;
-
-    #[inline]
-    fn buffdmg_as_time(&self) -> u32;
-
-    #[inline]
-    fn targeting_agent(&self, agent: &Agent) -> bool {
-        match self.state_change() {
-            CombatStateChange::EnterCombat
-            | CombatStateChange::HealthUpdate
-            | CombatStateChange::WeapSwap
-            | CombatStateChange::MaxHealthUpdate
-            | CombatStateChange::Reward
-            | CombatStateChange::Position
-            | CombatStateChange::Velocity => false,
-            _ => self.target_agent() == agent.id(),
-        }
-    }
-
-    #[inline]
-    fn from_agent(&self, agent: &Agent) -> bool {
-        match self.state_change() {
-            CombatStateChange::LogStart
-            | CombatStateChange::LogEnd
-            | CombatStateChange::Language
-            | CombatStateChange::ShardId
-            | CombatStateChange::GwBuild => false,
-            _ => self.source_agent() == agent.id(),
-        }
-    }
-
-    fn from_agent_and_gadgets(&self, agent: &Agent) -> bool {
-        match self.state_change() {
-            CombatStateChange::LogStart
-            | CombatStateChange::LogEnd
-            | CombatStateChange::Language
-            | CombatStateChange::ShardId
-            | CombatStateChange::GwBuild => false,
-            _ => self.source_agent() == agent.id() || self.master_source_instance() == agent.instance_id(),
-        }
-    }
-
-    #[inline]
-    fn is_boon(&self) -> bool {
-        match self.event_type() {
-            ET::BuffRemove      => true,
-            ET::BuffApplication => self.buff_damage() == 0,
-            _                          => false
-        }
-    }
-
-    #[inline]
-    fn is_physical_hit(&self) -> bool {
-        self.event_type() == ET::PhysicalHit
-    }
-    
-    #[inline]
-    fn is_condition_tick(&self) -> bool {
-        self.event_type() == ET::BuffApplication && self.buff_damage() > 0
-    }
-
-    #[inline]
-    fn is_damage(&self) -> bool {
-        self.is_physical_hit() || self.is_condition_tick()
-    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -219,15 +94,15 @@ impl TimeSeries {
     pub fn parse_agent(meta: &Metadata, agent: &Agent) -> Self {
         let mut series = Self::new(meta);
 
-        series.parse(meta.encounter_events().filter(|e| e.from_agent_and_gadgets(agent)));
+        series.parse(meta.encounter_events().filter(|e| e.event.from_agent_and_gadgets(agent)));
 
         series
     }
 
     #[inline]
-    pub fn parse<'a, E: 'a + IntoEvent, I: Iterator<Item=&'a E>>(&mut self, mut iter: I) {
+    pub fn parse<I: Iterator<Item=Event>>(&mut self, mut iter: I) {
         let mut entry = if let Some(event) = iter.next() {
-            let mut entry = TimeEntry::with_time(event.time() / 1000);
+            let mut entry = TimeEntry::with_time(event.time / 1000);
 
             self.parse_item(&mut entry, event);
 
@@ -238,24 +113,28 @@ impl TimeSeries {
         };
 
         for e in iter {
-            if entry.time != e.time() / 1000 {
+            if entry.time != e.time / 1000 {
                 if entry.has_data() {
                     self.series.push(entry);
                 }
 
-                entry = TimeEntry::with_time(e.time() / 1000);
+                entry = TimeEntry::with_time(e.time / 1000);
             }
 
             self.parse_item(&mut entry, e);
         }
     }
 
-    fn parse_item<'a, E: 'a + IntoEvent>(&mut self, entry: &mut TimeEntry, event: &E) {
-        match (event.state_change(), ) {
-            (CombatStateChange::ChangeDown,)   => entry.downed      = true,
-            (CombatStateChange::HealthUpdate,) => entry.health      = Some(unsafe { mem::transmute(event.target_agent()) }),
-            (CombatStateChange::WeapSwap,)     => entry.weapon_swap = true,
-            _ => {},
+    fn parse_item(&mut self, entry: &mut TimeEntry, event: Event) {
+        match event.event {
+            EventType::Agent { agent: _, instance: _, master_instance: _, event: nested } => match nested {
+                AgentEvent::ChangeDown      => entry.downed      = true,
+                AgentEvent::HealthUpdate(h) => entry.health      = Some(h),
+                AgentEvent::WeaponSwap      => entry.weapon_swap = true,
+                // FIXME: Add more stuff, like DPS
+                _                           => {}
+            },
+            _                => unreachable!(),
         }
     }
 }

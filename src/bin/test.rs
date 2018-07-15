@@ -9,9 +9,11 @@ extern crate zip;
 
 use fnv::FnvHashMap;
 
+use evtc::EventIteratorExt;
 use evtc::Agent;
+use evtc::HitType;
+use evtc::TargetEvent;
 use evtc::Boss;
-use evtc::IntoEvent;
 use evtc::raw::Language;
 use evtc::statistics::Hits;
 use evtc::statistics::Abilities;
@@ -33,16 +35,13 @@ pub struct PowerCondiHits {
 }
 
 // TODO: Should probably implement using derive
-impl<E> Sink<E> for PowerCondiHits
-  where E: IntoEvent {
+impl Sink<TargetEvent> for PowerCondiHits {
     #[inline]
-    fn add_event(&mut self, e: &E) {
-        if e. is_physical_hit() {
-            self.power.add_event(e);
-        }
-
-        if e.is_condition_tick() {
-            self.condi.add_event(e);
+    fn add_event(&mut self, e: TargetEvent) {
+        match e {
+            TargetEvent::Damage { hit_type: HitType::Condi, .. } => self.condi.add_event(e),
+            TargetEvent::Damage { .. }                           => self.power.add_event(e),
+            _ => {},
         }
     }
 }
@@ -53,18 +52,17 @@ pub struct AbilityAndTotal {
     abilities: Abilities,
 }
 
-impl<E> Sink<E> for AbilityAndTotal
-  where E: IntoEvent {
+impl Sink<TargetEvent> for AbilityAndTotal {
     #[inline]
-    fn add_event(&mut self, e: &E) {
+    fn add_event(&mut self, e: TargetEvent) {
         self.total.add_event(e);
         self.abilities.add_event(e);
     }
 }
 
 // Should probably be a part of the derive
-sink_from_iter!(PowerCondiHits);
-sink_from_iter!(AbilityAndTotal);
+sink_from_iter!(PowerCondiHits, TargetEvent);
+sink_from_iter!(AbilityAndTotal, TargetEvent);
 
 #[derive(Debug, Clone, Serialize)]
 struct AgentStatistics<'a> {
@@ -134,11 +132,12 @@ fn parse_data(buffer: &[u8], logname: String) {
 
     let player_summaries = meta.agents().iter().filter(|a| a.is_player_character()).map(|a| PlayerSummary {
         agent: a,
-        hit_stats:          meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a)).collect(),
-        boss_hit_stats:     meta.encounter_events().filter(|e| e.from_agent_and_gadgets(a) && bosses.iter().any(|b| e.targeting_agent(b))).collect(),
+        hit_stats:          meta.encounter_events().from_agent_and_gadgets(a).target_events().collect(),
+        boss_hit_stats:     meta.encounter_events().from_agent_and_gadgets(a).targeting_any_of(&bosses[..]).target_events().collect(),
         agents:             (&[vec![a]]).iter().chain(group_agents_by_species(meta.agents_for_master(a)).values()).map(|minions| AgentStatistics {
             agent: minions[0],
-            stats: meta.encounter_events().filter(|e| minions.iter().any(|m| e.from_agent(m)) && bosses.iter().any(|b| e.targeting_agent(b)) && e.is_damage()).collect(),
+            stats: meta.encounter_events().from_any_of(minions).targeting_any_of(&bosses[..]).target_events().collect(),
+            // stats: meta.encounter_events().filter(|e| minions.iter().any(|m| e.from_agent(m)) && bosses.iter().any(|b| e.targeting_agent(b)) && e.is_damage()).collect(),
         }).collect(),
         series:    TimeSeries::parse_agent(&meta, a),
     }).collect();

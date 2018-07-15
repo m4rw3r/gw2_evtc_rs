@@ -1,12 +1,16 @@
+use event::Activation;
+use event::AgentEvent;
+use event::Buff;
+use event::Event;
+use event::EventType;
+use event::HitType;
+use event::TargetEvent;
 
 use types::AgentId;
 use types::Profession;
 use types::InstanceId;
 use IntoEvent;
-use types::EventType;
 use types::SpeciesId;
-
-use event;
 
 use std::fmt;
 use std::mem;
@@ -130,7 +134,7 @@ impl Agent {
     pub fn species_id(&self) -> Option<SpeciesId> {
         match (self.is_elite, self.profession & 0xffff0000) {
             (0xffffffff, 0xffff0000) => None,
-            (0xffffffff, _)          => Some(unsafe { SpeciesId::new((self.profession & 0xffff) as u16) }),
+            (0xffffffff, _)          => Some(SpeciesId::new((self.profession & 0xffff) as u16)),
             _                        => None,
         }
     }
@@ -344,45 +348,45 @@ impl CombatEvent {
     }
 
     #[inline(always)]
-    fn match_activation(&self) -> event::EventType {
-        event::EventType::Agent {
+    fn match_activation(&self) -> EventType {
+        EventType::Agent {
             agent:           if self.is_activation == CombatActivation::None && self.is_buffremove != CombatBuffRemove::None { self.dst_agent()  } else { self.src_agent() },
             instance:        if self.is_activation == CombatActivation::None && self.is_buffremove != CombatBuffRemove::None { self.dst_instid() } else { self.src_instid() },
             master_instance: self.src_master_instid(),
             event:           match self.is_activation {
-                CombatActivation::Normal => event::AgentEvent::Activation { skill: self.skill_id, cast: event::Activation::Normal(self.value as u32) },
-                CombatActivation::Quickness => event::AgentEvent::Activation { skill: self.skill_id, cast: event::Activation::Normal(self.value as u32) },
-                CombatActivation::CancelFire => event::AgentEvent::Activation { skill: self.skill_id, cast: event::Activation::CancelFire(self.value as u32) },
-                CombatActivation::Cancel => event::AgentEvent::Activation { skill: self.skill_id, cast: event::Activation::Cancel(self.value as u32) },
-                CombatActivation::Reset => event::AgentEvent::Activation { skill: self.skill_id, cast: event::Activation::Cancel(self.value as u32) },
+                CombatActivation::Normal => AgentEvent::Activation { skill: self.skill_id, cast: Activation::Normal(self.value as u32) },
+                CombatActivation::Quickness => AgentEvent::Activation { skill: self.skill_id, cast: Activation::Normal(self.value as u32) },
+                CombatActivation::CancelFire => AgentEvent::Activation { skill: self.skill_id, cast: Activation::CancelFire(self.value as u32) },
+                CombatActivation::Cancel => AgentEvent::Activation { skill: self.skill_id, cast: Activation::Cancel(self.value as u32) },
+                CombatActivation::Reset => AgentEvent::Activation { skill: self.skill_id, cast: Activation::Cancel(self.value as u32) },
                 // TODO: Add cause
-                CombatActivation::None => event::AgentEvent::WithTarget {
+                CombatActivation::None => AgentEvent::WithTarget {
                     agent:    if self.is_buffremove != CombatBuffRemove::None { self.src_agent()  } else { self.dst_agent() },
                     instance: if self.is_buffremove != CombatBuffRemove::None { self.src_instid() } else { self.dst_instid() },
                     event: match self.is_buffremove {
-                        CombatBuffRemove::All | CombatBuffRemove::Manual => event::TargetEvent::Buff(self.skill_id, event::Buff::RemoveAll),
-                        CombatBuffRemove::Single                         => event::TargetEvent::Buff(self.skill_id, event::Buff::RemoveSingle),
+                        CombatBuffRemove::All | CombatBuffRemove::Manual => TargetEvent::Buff(self.skill_id, Buff::RemoveAll),
+                        CombatBuffRemove::Single                         => TargetEvent::Buff(self.skill_id, Buff::RemoveSingle),
                         CombatBuffRemove::None                           => match (self.buff > 0, self.buff_dmg == 0) {
                             (true, true) => 
                                 // TODO: Add info about duration and number of stacks and so on
-                                event::TargetEvent::Buff(self.skill_id, event::Buff::Application),
-                            (x, _) => event::TargetEvent::Damage {
-                                skill:  self.skill_id,
-                                damage: if x { self.buff_dmg as i64 } else { self.value as i64 },
-                                flanking: self.is_flanking > 0,
-                                moving:   self.is_src_moving > 0,
+                                TargetEvent::Buff(self.skill_id, Buff::Application),
+                            (x, _) => TargetEvent::Damage {
+                                skill:      self.skill_id,
+                                damage:     if x { self.buff_dmg as i64 } else { self.value as i64 },
+                                flanking:   self.is_flanking > 0,
+                                moving:     self.is_src_moving > 0,
                                 src_over90: self.is_src_ninety > 0,
-                                hit_type:  if x { event::HitType::Condi } else {
+                                hit_type:   if x { HitType::Condi } else {
                                     match self.result {
-                                        HitResult::Normal      => event::HitType::Normal, 
-                                        HitResult::Crit        => event::HitType::Crit, 
-                                        HitResult::Glance      => event::HitType::Glance, 
-                                        HitResult::Block       => event::HitType::Block, 
-                                        HitResult::Evade       => event::HitType::Evade, 
-                                        HitResult::Interrupt   => event::HitType::Interrupt, 
-                                        HitResult::Absorb      => event::HitType::Absorb, 
-                                        HitResult::Blind       => event::HitType::Blind, 
-                                        HitResult::KillingBlow => event::HitType::KillingBlow, 
+                                        HitResult::Normal      => HitType::Normal, 
+                                        HitResult::Crit        => HitType::Crit, 
+                                        HitResult::Glance      => HitType::Glance, 
+                                        HitResult::Block       => HitType::Block, 
+                                        HitResult::Evade       => HitType::Evade, 
+                                        HitResult::Interrupt   => HitType::Interrupt, 
+                                        HitResult::Absorb      => HitType::Absorb, 
+                                        HitResult::Blind       => HitType::Blind, 
+                                        HitResult::KillingBlow => HitType::KillingBlow, 
                                     }
                                 }
                             }
@@ -396,187 +400,44 @@ impl CombatEvent {
 
 impl IntoEvent for CombatEvent {
     #[inline]
-    fn to_event(&self) -> event::Event {
-        event::Event { time: self.time, event: match self.is_statechange {
-            // src_agent will be text language
-            CombatStateChange::Language        => event::EventType::Language(Language::from_agent_id(self.src_agent)),
-            // src_agent will be game build
-            CombatStateChange::GwBuild         => event::EventType::Gw2Build(self.src_agent),
-            // src_agent will be sever shard id
-            CombatStateChange::ShardId         => event::EventType::Gw2Build(self.src_agent),
-            // log start. value = server unix timestamp **uint32**. buff_dmg = local unix timestamp. src_agent = 0x637261 (arcdps id)
-            CombatStateChange::LogStart        =>
-                event::EventType::LogStart { server: self.value as u32, local: self.buff_dmg as u32, arcdps_id: self.src_agent },
-            // log end. value = server unix timestamp **uint32**. buff_dmg = local unix timestamp. src_agent = 0x637261 (arcdps id)
-            CombatStateChange::LogEnd          =>
-                event::EventType::LogEnd { server: self.value as u32, local: self.buff_dmg as u32, arcdps_id: self.src_agent },
-            // src_agent entered combat, dst_agent is subgroup
-            CombatStateChange::EnterCombat     =>
-                event::EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: event::AgentEvent::EnterCombat(self.dst_agent) },
-            // src_agent left combat
-            CombatStateChange::ExitCombat      =>
-                event::EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: event::AgentEvent::ExitCombat },
-            // src_agent is now alive
-            CombatStateChange::ChangeUp        =>
-                event::EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: event::AgentEvent::ChangeUp },
-            // src_agent is now dead
-            CombatStateChange::ChangeDead      =>
-                event::EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: event::AgentEvent::ChangeDead },
-            // src_agent is now downed
-            CombatStateChange::ChangeDown      =>
-                event::EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: event::AgentEvent::ChangeDown },
-            // src_agent is now in game tracking range
-            CombatStateChange::Spawn           =>
-                event::EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: event::AgentEvent::Spawn },
-            // src_agent is no longer being tracked
-            CombatStateChange::Despawn         =>
-                event::EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: event::AgentEvent::Despawn },
-            // src_agent has reached a health marker. dst_agent = percent * 10000 (eg. 99.5% will be 9950)
-            CombatStateChange::HealthUpdate    =>
-                event::EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: event::AgentEvent::HealthUpdate(self.dst_agent) },
-            // src_agent swapped weapon set. dst_agent = current set id (0/1 water, 4/5 land)
-            CombatStateChange::WeapSwap        =>
-                event::EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: event::AgentEvent::WeaponSwap },
-            // src_agent has had it's maximum health changed. dst_agent = new max health
-            CombatStateChange::MaxHealthUpdate =>
-                event::EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: event::AgentEvent::MaxHealthUpdate(self.dst_agent) },
-            // src_agent will be agent of "recording" player
-            CombatStateChange::PointOfView     =>
-                event::EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: event::AgentEvent::PointOfView },
-            // src_agent is self, dst_agent is reward id, value is reward type. these are the wiggly boxes that you get
-            CombatStateChange::Reward          =>
-                event::EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: event::AgentEvent::Reward(self.dst_agent, self.value as u32) },
-            // combat event that will appear once per buff per agent on logging start (zero duration, buff==18)
+    fn to_event(&self) -> Event {
+        // TODO: Should be possible to tidy up this
+        Event { time: self.time, event: match self.is_statechange {
+            CombatStateChange::Language        => EventType::Language(Language::from_agent_id(self.src_agent)),
+            CombatStateChange::GwBuild         => EventType::Gw2Build(self.src_agent),
+            CombatStateChange::ShardId         => EventType::Gw2Build(self.src_agent),
+            CombatStateChange::LogStart        => EventType::LogStart { server: self.value as u32, local: self.buff_dmg as u32, arcdps_id: self.src_agent },
+            CombatStateChange::LogEnd          => EventType::LogEnd { server: self.value as u32, local: self.buff_dmg as u32, arcdps_id: self.src_agent },
+            CombatStateChange::EnterCombat     => EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: AgentEvent::EnterCombat(self.dst_agent) },
+            CombatStateChange::ExitCombat      => EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: AgentEvent::ExitCombat },
+            CombatStateChange::ChangeUp        => EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: AgentEvent::ChangeUp },
+            CombatStateChange::ChangeDead      => EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: AgentEvent::ChangeDead },
+            CombatStateChange::ChangeDown      => EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: AgentEvent::ChangeDown },
+            CombatStateChange::Spawn           => EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: AgentEvent::Spawn },
+            CombatStateChange::Despawn         => EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: AgentEvent::Despawn },
+            CombatStateChange::HealthUpdate    => EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: AgentEvent::HealthUpdate(self.dst_agent) },
+            CombatStateChange::WeapSwap        => EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: AgentEvent::WeaponSwap },
+            CombatStateChange::MaxHealthUpdate => EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: AgentEvent::MaxHealthUpdate(self.dst_agent) },
+            CombatStateChange::PointOfView     => EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: AgentEvent::PointOfView },
+            CombatStateChange::Reward          => EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: AgentEvent::Reward(self.dst_agent, self.value as u32) },
             CombatStateChange::BuffInitial     => {
+                // TODO: What is this?
                 // println!("BuffInitial: {:?}", self);
 
-                event::EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: event::AgentEvent::BuffInitial }
+                EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: AgentEvent::BuffInitial }
             },
-            // src_agent changed, cast float* p = (float*)&dst_agent, access as x/y/z (float[3])
             CombatStateChange::Position        => {
                 let pos: &[f32; 3] = unsafe { mem::transmute(&self.dst_agent) };
 
-                event::EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: event::AgentEvent::Position { x: pos[0], y: pos[1], z: pos[2] } }
+                EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: AgentEvent::Position { x: pos[0], y: pos[1], z: pos[2] } }
             },
-            // src_agent changed, cast float* v = (float*)&dst_agent, access as x/y/z (float[3])
             CombatStateChange::Velocity        => {
                 let pos: &[f32; 3] = unsafe { mem::transmute(&self.dst_agent) };
 
-                event::EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: event::AgentEvent::Position { x: pos[0], y: pos[1], z: pos[2] } }
+                EventType::Agent { agent: self.src_agent(), instance: self.src_instid(), master_instance: self.src_master_instid(), event: AgentEvent::Position { x: pos[0], y: pos[1], z: pos[2] } }
             },
-            // not used - not this kind of event
             CombatStateChange::None            => self.match_activation()
         } }
-    }
-
-    #[inline]
-    fn time(&self) -> u64 {
-        self.time
-    }
-
-    #[inline]
-    fn event_type(&self) -> EventType {
-        if self.is_statechange != CombatStateChange::None {
-            return EventType::StateChange;
-        }
-
-        if self.is_activation != CombatActivation::None {
-            return EventType::Activation;
-        }
-
-        if self.is_buffremove != CombatBuffRemove::None {
-            return EventType::BuffRemove;
-        }
-        
-        if self.buff > 0 {
-            return EventType::BuffApplication;
-        }
-
-        return EventType::PhysicalHit;
-    }
-
-    #[inline]
-    fn source_agent(&self) -> AgentId {
-        if self.event_type() == EventType::BuffRemove { self.dst_agent() } else { self.src_agent() }
-    }
-
-    #[inline]
-    fn target_agent(&self) -> AgentId {
-        if self.event_type() == EventType::BuffRemove { self.src_agent() } else { self.dst_agent() }
-    }
-
-    #[inline]
-    fn target_instance(&self) -> InstanceId {
-        // TODO: Also flipped?
-        InstanceId::new(self.dst_instid)
-    }
-
-    #[inline]
-    fn source_instance(&self) -> InstanceId {
-        // TODO: Also flipped?
-        InstanceId::new(self.src_instid)
-    }
-
-    #[inline]
-    fn master_source_instance(&self) -> InstanceId {
-        // TODO: Also flipped?
-        InstanceId::new(self.src_master_instid)
-    }
-
-    #[inline]
-    fn state_change(&self) -> CombatStateChange {
-        self.is_statechange
-    }
-
-    #[inline]
-    fn buff_damage(&self) -> i64 {
-        self.buff_dmg as i64
-    }
-
-    #[inline]
-    fn damage(&self) -> i64 {
-        match self.event_type() {
-            EventType::PhysicalHit     => self.value as i64,
-            EventType::BuffApplication => self.buff_dmg as i64,
-            _                          => 0,
-        }
-    }
-
-    #[inline]
-    fn hit_result(&self) -> HitResult {
-        self.result
-    }
-
-    #[inline]
-    fn is_source_flanking(&self) -> bool {
-        self.is_flanking > 0
-    }
-
-    #[inline]
-    fn is_source_moving(&self) -> bool {
-        self.is_src_moving > 0
-    }
-
-    #[inline]
-    fn is_source_over90(&self) -> bool {
-        self.is_src_ninety > 0
-    }
-
-    #[inline]
-    fn skill_id(&self) -> u16 {
-        self.skill_id
-    }
-
-    /// Only valid if state_change() is LogStart or LogEnd
-    #[inline]
-    fn value_as_time(&self) -> u32 {
-        unsafe { mem::transmute(self.value) }
-    }
-
-    /// Only valid if state_change() is LogStart or LogEnd
-    #[inline]
-    fn buffdmg_as_time(&self) -> u32 {
-        unsafe { mem::transmute(self.buff_dmg) }
     }
 }
 

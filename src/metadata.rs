@@ -2,7 +2,6 @@ use IntoEvent;
 use Event;
 use EventType;
 use AgentEvent;
-use TargetEvent;
 
 use fnv::FnvHashMap;
 
@@ -13,11 +12,8 @@ use std::u32;
 use std::u64;
 use std::cmp;
 use std::fmt;
-use std::mem;
 
 use raw::Agent as RawAgent;
-use raw::CombatEvent;
-use raw::CombatStateChange;
 use raw::EvtcBuf;
 use raw::Language;
 use raw::Skill;
@@ -25,7 +21,6 @@ use raw::UNLISTED_SKILLS;
 
 use types::AgentId;
 use types::Boss;
-// use types::EventType;
 use types::InstanceId;
 use types::Profession;
 use types::SpeciesId;
@@ -124,9 +119,9 @@ impl Serialize for Agent {
 
         let mut map = serializer.serialize_map(Some(14))?;
 
-        map.serialize_entry("name",          self.inner.name())?;
-        map.serialize_entry("accountName",   self.inner.account_name())?;
-        map.serialize_entry("subgroup",      self.inner.subgroup())?;
+        map.serialize_entry("name",          self.name())?;
+        map.serialize_entry("accountName",   self.account_name())?;
+        map.serialize_entry("subgroup",      self.subgroup())?;
         map.serialize_entry("isPlayer",      &self.is_player_character())?;
         map.serialize_entry("speciesId",     &self.species_id())?;
         map.serialize_entry("profession",    &self.profession())?;
@@ -134,8 +129,8 @@ impl Serialize for Agent {
         map.serialize_entry("concentration", &{self.inner.concentration})?;
         map.serialize_entry("healing",       &{self.inner.healing})?;
         map.serialize_entry("conditionDmg",  &{self.inner.condition_dmg})?;
-        map.serialize_entry("firstAware",    &self.meta.first_aware)?;
-        map.serialize_entry("lastAware",     &self.meta.last_aware)?;
+        map.serialize_entry("firstAware",    &self.first_aware())?;
+        map.serialize_entry("lastAware",     &self.last_aware())?;
         map.serialize_entry("isPov",         &self.meta.is_pov)?;
         map.serialize_entry("diedAt",        &self.meta.died)?;
 
@@ -198,11 +193,11 @@ impl<'a> Metadata<'a> {
         for e in buffer.events.iter().map(|e| e.to_event()) {
             match e.event {
                 // TODO: Save the extra values
-                EventType::LogStart { server, local, arcdps_id } => start = server,
-                EventType::LogEnd   { server, local, arcdps_id } => end   = server,
-                EventType::Language(l)                           => lang  = l,
-                EventType::Gw2Build(b)                           => build = b,
-                EventType::ShardId(s)                            => shard = s,
+                EventType::LogStart { server, .. } => start = server,
+                EventType::LogEnd   { server, .. } => end   = server,
+                EventType::Language(l)             => lang  = l,
+                EventType::Gw2Build(b)             => build = b,
+                EventType::ShardId(s)              => shard = s,
                 EventType::Agent { agent, instance, master_instance, event: nested_event } => {
                     let master_agent = master_instance.and_then(|i| map.iter().find(|(_id, m)| m.instid == i).map(|(&id, _)| id));
 
@@ -231,105 +226,7 @@ impl<'a> Metadata<'a> {
                     }
                 }
             }
-
-/*
-            let master_agent = if e.master_source_instance() != InstanceId::empty() {
-                // TODO: Maybe check so our parent hasn't died yet? idk
-                // FIXME: This does not seem to work properly
-                map.iter().find(|(_id, m)| m.instid == e.master_source_instance() /*&& m.first_aware < e.time*/).map(|(&id, _)| id)
-            } else { None };
-
-            let mut meta = map.entry(e.source_agent()).or_insert(AgentMetadata {
-                instid:        InstanceId::empty(),
-                first_aware:   e.time(),
-                last_aware:    e.time(),
-                master_instid: InstanceId::empty(),
-                master_agent:  AgentId::empty(),
-                died:          None,
-                is_pov:        false,
-            });
-
-            // Apparently if it is not a combat-state-change then it is wrong
-            if e.event_type() == EventType::StateChange {
-                meta.instid = e.source_instance();
-
-                if e.state_change() == CombatStateChange::PointOfView {
-                    meta.is_pov = true;
-                }
-            }
-
-            meta.last_aware = e.time();
-
-            if e.master_source_instance() != InstanceId::empty() {
-                meta.master_instid = e.master_source_instance();
-                meta.master_agent  = master_agent.unwrap_or(meta.master_agent);
-            }
-
-            match e.state_change() {
-                CombatStateChange::ChangeDead => meta.died = Some(e.time()),
-                CombatStateChange::LogStart   => start = e.value_as_time(),
-                CombatStateChange::LogEnd     => end   = e.value_as_time(),
-                // CombatStateChange::Language   => lang  = Language::from_agent_id(e.source_agent()),
-                // FIXME: Do not use transmute, use the proper event conversion
-                CombatStateChange::GwBuild    => build = unsafe { mem::transmute(e.source_agent()) },
-                CombatStateChange::ShardId    => shard = unsafe { mem::transmute(e.source_agent()) },
-                _                             => {},
-            }
-            */
         }
-/*
-        for e in buffer.events.iter() {
-            let master_agent = if e.master_source_instance() != InstanceId::empty() {
-                // TODO: Maybe check so our parent hasn't died yet? idk
-                // FIXME: This does not seem to work properly
-                map.iter().find(|(_id, m)| m.instid == e.master_source_instance() /*&& m.first_aware < e.time*/).map(|(&id, _)| id)
-            } else { None };
-
-            let mut meta = map.entry(e.source_agent()).or_insert(AgentMetadata {
-                instid:        InstanceId::empty(),
-                first_aware:   e.time(),
-                last_aware:    e.time(),
-                master_instid: InstanceId::empty(),
-                master_agent:  AgentId::empty(),
-                died:          None,
-                is_pov:        false,
-            });
-
-            // Apparently if it is not a combat-state-change then it is wrong
-            if e.event_type() == EventType::StateChange {
-                meta.instid = e.source_instance();
-
-                if e.state_change() == CombatStateChange::PointOfView {
-                    meta.is_pov = true;
-                }
-            }
-
-            meta.last_aware = e.time();
-
-            if e.master_source_instance() != InstanceId::empty() {
-                meta.master_instid = e.master_source_instance();
-                meta.master_agent  = master_agent.unwrap_or(meta.master_agent);
-            }
-
-            match e.state_change() {
-                CombatStateChange::ChangeDead => meta.died = Some(e.time()),
-                CombatStateChange::LogStart   => start = e.value_as_time(),
-                CombatStateChange::LogEnd     => end   = e.value_as_time(),
-                // CombatStateChange::Language   => lang  = Language::from_agent_id(e.source_agent()),
-                // FIXME: Do not use transmute, use the proper event conversion
-                CombatStateChange::GwBuild    => build = unsafe { mem::transmute(e.source_agent()) },
-                CombatStateChange::ShardId    => shard = unsafe { mem::transmute(e.source_agent()) },
-                _                             => {},
-            }
-        }
-        */
-
-/*
-        for v in map.values().filter(|v| (v.master_instid != InstanceId::empty()) ^ (v.master_agent != AgentId::empty())) {
-            // FIXME: Is this necessary?
-            println!("{:?}", v);
-        }
-        */
 
         // TODO: Filter agents?
         Metadata {
@@ -362,10 +259,10 @@ impl<'a> Metadata<'a> {
 
     /// Only returns the events which happened while the boss(es) were present in the fight,
     /// does not contain gaps.
-    pub fn encounter_events(&self) -> impl Iterator<Item=&CombatEvent> {
+    pub fn encounter_events(&'a self) -> impl 'a + Iterator<Item=Event> {
         let (start, end) = self.bosses().fold((u64::MAX, 0), |(start, end), a| (cmp::min(start, a.first_aware()), cmp::max(end, a.last_aware())));
 
-        self.buffer.events.iter().filter(move |e| start <= e.time() && e.time() <= end)
+        self.buffer.events.iter().map(|e| e.to_event()).filter(move |e| start <= e.time && e.time <= end)
     }
 
     pub fn skills(&self) -> impl Iterator<Item=&Skill> {

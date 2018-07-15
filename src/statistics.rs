@@ -1,6 +1,5 @@
-use IntoEvent;
-
-use raw::HitResult;
+use TargetEvent;
+use HitType;
 
 use fnv::FnvHashMap;
 
@@ -11,17 +10,15 @@ use std::cmp;
 use std::i64;
 
 /// A sink for statistics
-pub trait Sink<E>: Default
-  where E: IntoEvent {
-    fn add_event(&mut self, e: &E);
+pub trait Sink<T>: Default {
+    fn add_event(&mut self, e: T);
 }
 
 #[macro_export]
 macro_rules! sink_from_iter {
-    ($ty:ty) => {
-impl<'a, E> ::std::iter::FromIterator<&'a E> for $ty
-  where E: 'a + IntoEvent {
-    fn from_iter<I: IntoIterator<Item=&'a E>>(iter: I) -> Self {
+    ($ty:ty, $u:ty) => {
+impl ::std::iter::FromIterator<$u> for $ty {
+    fn from_iter<I: IntoIterator<Item=$u>>(iter: I) -> Self {
         let mut s: $ty = Default::default();
 
         for e in iter {
@@ -34,8 +31,8 @@ impl<'a, E> ::std::iter::FromIterator<&'a E> for $ty
     }
 }
 
-sink_from_iter!(Hits);
-sink_from_iter!(Abilities);
+sink_from_iter!(Hits, TargetEvent);
+sink_from_iter!(Abilities, TargetEvent);
 
 /// Statistics for hits
 #[derive(Debug, Copy, Clone, Serialize)]
@@ -99,42 +96,42 @@ impl Default for Hits {
     }
 }
 
-impl<E> Sink<E> for Hits
-  where E: IntoEvent {
+impl Sink<TargetEvent> for Hits {
     #[inline]
-    fn add_event(&mut self, e: &E) {
-        self.total_damage += match e.hit_result() {
-              HitResult::Normal
-            | HitResult::Crit
-            | HitResult::Glance
-            | HitResult::KillingBlow => e.damage(),
-            _                        => 0,
-        };
-        self.wasted_damage += match e.hit_result() {
-              HitResult::Block
-            | HitResult::Evade
-            | HitResult::Interrupt
-            | HitResult::Absorb
-            | HitResult::Blind => e.damage(),
-            _                  => 0,
-        };
+    fn add_event(&mut self, e: TargetEvent) {
+        match e {
+            TargetEvent::Damage {
+                damage,
+                flanking,
+                moving,
+                src_over90,
+                hit_type,
+                ..
+            } => {
+                debug_assert!(if hit_type.is_zero() { damage == 0 } else { true });
 
-        self.hits += 1;
+                self.total_damage += damage;
+                self.hits         += 1;
+                self.min_damage    = cmp::min(self.min_damage, damage);
+                self.max_damage    = cmp::max(self.max_damage, damage);
 
-        if e.is_source_flanking() { self.flanking += 1; }
-        if e.is_source_moving()   { self.moving += 1; }
-        if e.is_source_over90()   { self.scholar += 1; }
+                if flanking   { self.flanking += 1; }
+                if moving     { self.moving   += 1; }
+                if src_over90 { self.scholar  += 1; }
 
-        if e.hit_result() == HitResult::Crit { self.criticals += 1; }
-        if e.hit_result() == HitResult::Glance    { self.glancing += 1; }
-        if e.hit_result() == HitResult::Interrupt { self.interrupted += 1; }
-        if e.hit_result() == HitResult::Block     { self.blocked += 1; }
-        if e.hit_result() == HitResult::Evade     { self.evaded += 1; }
-        if e.hit_result() == HitResult::Blind     { self.missed += 1; }
-        if e.hit_result() == HitResult::Absorb    { self.absorbed += 1; }
-
-        self.min_damage = cmp::min(self.min_damage, e.damage());
-        self.max_damage = cmp::max(self.max_damage, e.damage());
+                match hit_type {
+                    HitType::Crit      => self.criticals   += 1,
+                    HitType::Glance    => self.glancing    += 1,
+                    HitType::Block     => self.blocked     += 1,
+                    HitType::Evade     => self.evaded      += 1,
+                    HitType::Interrupt => self.interrupted += 1,
+                    HitType::Absorb    => self.absorbed    += 1,
+                    HitType::Blind     => self.missed      += 1,
+                    _                  => {},
+                }
+            },
+            _ => {},
+        }
     }
 }
 
@@ -159,10 +156,12 @@ impl Default for Abilities {
     }
 }
 
-impl<E> Sink<E> for Abilities
-  where E: IntoEvent {
+impl Sink<TargetEvent> for Abilities {
     #[inline]
-    fn add_event(&mut self, e: &E) {
-        self.abilities.entry(e.skill_id()).or_insert(Default::default()).add_event(e);
+    fn add_event(&mut self, e: TargetEvent) {
+        match e {
+            TargetEvent::Damage { skill, .. } => self.abilities.entry(skill).or_insert(Default::default()).add_event(e),
+            _ => {}
+        }
     }
 }
