@@ -5,14 +5,14 @@ import { h
 import Profession from "./icons/Profession";
 import { getSkillData } from "./util";
 
-const Agent = ({ agent, bossHits: { abilities, total }, abilityNames, skillData }) => {
+const Agent = ({ agent, bossHits: { abilities }, abilityNames, skillData, allBossDamage }) => {
   const list = Object.keys(abilities).map(k => ({...abilities[k], name: abilityNames[k], key: k, skillData: skillData[k|0] })).sort((a, b) => b.totalDamage - a.totalDamage);
 
   const Ability = ({ name, key, totalDamage, hits, criticals, flanking, glancing, scholar, moving, interrupted, blocked, evaded, absorbed, missed, minDamage, maxDamage, skillData }) => <tr>
     <td>{skillData ? <img src={skillData.icon} /> : null}</td>
-    <td class="name">{name || (skillData && skillData.name) || key}</td>
+    <td class="name" title={key}>{name || (skillData && skillData.name) || key}</td>
     <td>{totalDamage}</td>
-    <td>{(totalDamage / total.totalDamage * 100).toFixed(2)}%</td>
+    <td>{(totalDamage / allBossDamage * 100).toFixed(2)}%</td>
     <td>{hits}</td>
     <td>{criticals}</td>
     <td>{scholar}</td>
@@ -83,7 +83,7 @@ export default class PlayerSummary extends Component {
       return <div>No player found</div>;
     }
 
-    const { agent: { name, profession }, agents } = player
+    const { agent: { name, profession }, bossHits, agents } = player
     const currentAgent = agents.find(a => a.agent.speciesId === selectedAgent);
 
     return <div class="player-summary">
@@ -101,11 +101,7 @@ export default class PlayerSummary extends Component {
           </li>)}
       </ul> : null}
 
-      <Agent {...currentAgent} abilityNames={skills} skillData={skillData} />
-
-      <pre>
-        {JSON.stringify(currentAgent, null, 2)}
-      </pre>
+      <Agent {...currentAgent} abilityNames={skills} skillData={skillData} allBossDamage={bossHits.condi.totalDamage + bossHits.power.totalDamage} />
     </div>;
   }
 }
