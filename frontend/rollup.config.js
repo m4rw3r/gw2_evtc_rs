@@ -102,7 +102,7 @@ export default function(props) { return ${
       },
       mangle: production ? {
         toplevel:   true,
-        reserved:   [],
+        reserved:   ["evtc_rs"],
         properties: {
           regex: /^_/
         },

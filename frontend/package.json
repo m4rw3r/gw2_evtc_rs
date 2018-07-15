@@ -3,12 +3,11 @@
     "scripts": {
         "build":     "concurrently npm:build-*",
         "build-js":  "rollup -c",
-        "build-css": "sass src/index.sass dist/style.css",
+        "build-css": "sass src/index.sass dist/style.css --style compressed",
         "dist":      "cross-env NODE_ENV=production npm run build",
         "watch":     "concurrently npm:watch-*",
         "watch-js":  "rollup -w -c",
-        "watch-css": "sass --watch src/index.sass:dist/style.css",
-        "_watch":    "nodemon -w src -q -x \"npm run --silent build || true\""
+        "watch-css": "sass --watch src/index.sass:dist/style.css"
     },
     "dependencies": {
         "preact": "^8.2.9"
