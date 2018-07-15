@@ -55,3 +55,8 @@
   * [ ] graph
 * [ ] Colour lines based on core-profession
 * [ ] Display used weapons for the character
+
+
+## Notes
+
+* Performance regression when refactoring to use a large Event-enum (improves correctness, ease of use). From 96822ed0e0cc62dceb5f6d8a8c6307aa628fb76f to f1eafc49e5eac84ceaad9b5725117ebaf42661bf, approx 30% performance loss (600ms -> 800ms).
