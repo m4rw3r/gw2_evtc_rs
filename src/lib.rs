@@ -41,12 +41,15 @@ struct TimeEntry {
     /// Health fraction, scaled 10000x
     health:      Option<u64>,
     /// Damage done during this second
-    damage:      Option<i64>,
-    /// Average DPS
-    dps:         Option<i64>,
-    boss_dps:    Option<i64>,
+    damage:      i64,
+    /// Boss damage done during this second
+    boss_dmg:    i64,
     /// If the player got downed this second
     downed:      bool,
+    /// If the player got revided from downed state this second
+    revived:     bool,
+    /// If the player got revided from downed state this second
+    dead:        bool,
     /// If the player swapped weapon this second
     weapon_swap: bool,
 }
@@ -57,10 +60,11 @@ impl TimeEntry {
         TimeEntry {
             time:        t,
             health:      None,
-            damage:      None,
-            dps:         None,
-            boss_dps:    None,
+            damage:      0,
+            boss_dmg:    0,
             downed:      false,
+            revived:     false,
+            dead:        false,
             weapon_swap: false,
         }
     }
@@ -68,10 +72,11 @@ impl TimeEntry {
     #[inline]
     fn has_data(&self) -> bool {
            self.health.is_some()
-        || self.damage.is_some()
-        || self.dps.is_some()
-        || self.boss_dps.is_some()
+        || self.damage > 0
+        || self.boss_dmg > 0
         || self.downed
+        || self.revived
+        || self.dead
         || self.weapon_swap
     }
 }
@@ -94,17 +99,17 @@ impl TimeSeries {
     pub fn parse_agent(meta: &Metadata, agent: &Agent) -> Self {
         let mut series = Self::new(meta);
 
-        series.parse(meta.encounter_events().from_agent_and_gadgets(agent));
+        series.parse(meta.encounter_events().from_agent_and_gadgets(agent), meta);
 
         series
     }
 
     #[inline]
-    pub fn parse<I: Iterator<Item=Event>>(&mut self, mut iter: I) {
+    pub fn parse<I: Iterator<Item=Event>>(&mut self, mut iter: I, meta: &Metadata) {
         let mut entry = if let Some(event) = iter.next() {
             let mut entry = TimeEntry::with_time(event.time / 1000);
 
-            self.parse_item(&mut entry, event);
+            self.parse_item(&mut entry, event, meta);
 
             entry
         }
@@ -121,16 +126,29 @@ impl TimeSeries {
                 entry = TimeEntry::with_time(e.time / 1000);
             }
 
-            self.parse_item(&mut entry, e);
+            self.parse_item(&mut entry, e, meta);
         }
     }
 
-    fn parse_item(&mut self, entry: &mut TimeEntry, event: Event) {
+    fn parse_item(&mut self, entry: &mut TimeEntry, event: Event, meta: &Metadata) {
         match event.event {
-            EventType::Agent { agent: _, instance: _, master_instance: _, event: nested } => match nested {
+            EventType::Agent { agent: _, instance: _, master_instance, event: nested } => match nested {
                 AgentEvent::ChangeDown      => entry.downed      = true,
+                AgentEvent::ChangeUp        => entry.revived     = true,
+                // Got to check if it is a minion which died
+                AgentEvent::ChangeDead if master_instance.is_none() => entry.dead        = true,
                 AgentEvent::HealthUpdate(h) => entry.health      = Some(h),
                 AgentEvent::WeaponSwap      => entry.weapon_swap = true,
+                AgentEvent::WithTarget { agent, instance, event: target_event } => match target_event {
+                    TargetEvent::Damage { damage, .. } => {
+                        entry.damage += damage;
+
+                        if meta.bosses().any(|b| b.id() == agent) {
+                            entry.boss_dmg += damage;
+                        }
+                    },
+                    _ => {}
+                }
                 // FIXME: Add more stuff, like DPS
                 _                           => {}
             },

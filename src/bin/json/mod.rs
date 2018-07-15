@@ -134,7 +134,6 @@ pub fn parse_data<W: Write>(buffer: &[u8], logname: String, writer: W) -> Result
         agents:             (&[vec![a]]).iter().chain(group_agents_by_species(meta.agents_for_master(a)).values()).map(|minions| AgentStatistics {
             agent: minions[0],
             stats: meta.encounter_events().from_any_of(minions).targeting_any_of(&bosses[..]).target_events().collect(),
-            // stats: meta.encounter_events().filter(|e| minions.iter().any(|m| e.from_agent(m)) && bosses.iter().any(|b| e.targeting_agent(b)) && e.is_damage()).collect(),
         }).collect(),
         series:    TimeSeries::parse_agent(&meta, a),
     }).collect();
