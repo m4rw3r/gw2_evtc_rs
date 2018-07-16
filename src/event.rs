@@ -2,30 +2,29 @@ use types::AgentId;
 use types::InstanceId;
 use raw::Language;
 
+// TODO: Maybe swap to zero-sized wrapper-types?
+
 #[derive(Debug, Copy, Clone)]
 pub struct Event {
-    pub time:  u64,
-    pub event: EventType,
+    pub time:            u64,
+    pub agent:           AgentId,
+    pub instance:        InstanceId,
+    pub master_instance: Option<InstanceId>,
+    pub event:           EventType,
 }
 
 #[derive(Debug, Copy, Clone)]
-pub enum EventType {
+pub enum MetaEvent {
     /// Server unix timestamp, local unix timestamp, arcdpsId
     LogStart { server: u32, local: u32, arcdps_id: u64 },
     LogEnd   { server: u32, local: u32, arcdps_id: u64 },
     Language(Language),
     Gw2Build(u64),
     ShardId(u64),
-    Agent {
-        agent:           AgentId,
-        instance:        InstanceId,
-        master_instance: Option<InstanceId>,
-        event:           AgentEvent,
-    },
 }
 
 #[derive(Debug, Copy, Clone)]
-pub enum AgentEvent {
+pub enum EventType {
     /// Entered combat in subgroup
     EnterCombat(u64),
     ExitCombat,

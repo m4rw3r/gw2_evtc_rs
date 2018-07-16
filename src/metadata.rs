@@ -1,7 +1,7 @@
 use IntoEvent;
 use Event;
+use MetaEvent;
 use EventType;
-use AgentEvent;
 
 use fnv::FnvHashMap;
 
@@ -190,41 +190,44 @@ impl<'a> Metadata<'a> {
         let mut build = 0;
         let mut lang  = Language::English;
 
-        for e in buffer.events.iter().map(|e| e.to_event()) {
-            match e.event {
+        // Determine meta stuff
+        for e in buffer.events.iter().filter_map(IntoEvent::to_meta_event) {
+            match e {
                 // TODO: Save the extra values
-                EventType::LogStart { server, .. } => start = server,
-                EventType::LogEnd   { server, .. } => end   = server,
-                EventType::Language(l)             => lang  = l,
-                EventType::Gw2Build(b)             => build = b,
-                EventType::ShardId(s)              => shard = s,
-                EventType::Agent { agent, instance, master_instance, event: nested_event } => {
-                    let master_agent = master_instance.and_then(|i| map.iter().find(|(_id, m)| m.instid == i).map(|(&id, _)| id));
+                MetaEvent::LogStart { server, .. } => start = server,
+                MetaEvent::LogEnd   { server, .. } => end   = server,
+                MetaEvent::Language(l)             => lang  = l,
+                MetaEvent::Gw2Build(b)             => build = b,
+                MetaEvent::ShardId(s)              => shard = s,
+            }
+        }
 
-                    let mut meta = map.entry(agent).or_insert(AgentMetadata {
-                        instid:        InstanceId::empty(),
-                        first_aware:   e.time,
-                        last_aware:    e.time,
-                        master_instid: InstanceId::empty(),
-                        master_agent:  AgentId::empty(),
-                        died:          None,
-                        is_pov:        false,
-                    });
+        for Event { time, agent, instance, master_instance, event } in buffer.events.iter().filter_map(IntoEvent::to_event) {
+            let master_agent = master_instance.and_then(|i| map.iter().find(|(_id, m)| m.instid == i).map(|(&id, _)| id));
 
-                    match nested_event {
-                        AgentEvent::EnterCombat(_) => meta.instid = instance,
-                        AgentEvent::PointOfView    => meta.is_pov = true,
-                        AgentEvent::ChangeDead     => meta.died   = Some(e.time),
-                        _                          => {},
-                    }
+            let mut meta = map.entry(agent).or_insert(AgentMetadata {
+                instid:        InstanceId::empty(),
+                first_aware:   time,
+                last_aware:    time,
+                master_instid: InstanceId::empty(),
+                master_agent:  AgentId::empty(),
+                died:          None,
+                is_pov:        false,
+            });
 
-                    meta.last_aware = e.time;
+            match event {
+                EventType::EnterCombat(_) |
+                  EventType::Spawn        => meta.instid = instance,
+                EventType::PointOfView    => meta.is_pov = true,
+                EventType::ChangeDead     => meta.died   = Some(time),
+                _                         => {},
+            }
 
-                    if let Some(i) = master_instance {
-                        meta.master_instid = i;
-                        meta.master_agent  = master_agent.unwrap_or(meta.master_agent);
-                    }
-                }
+            meta.last_aware = time;
+
+            if let Some(i) = master_instance {
+                meta.master_instid = i;
+                meta.master_agent  = master_agent.unwrap_or(meta.master_agent);
             }
         }
 
@@ -262,7 +265,7 @@ impl<'a> Metadata<'a> {
     pub fn encounter_events(&'a self) -> impl 'a + Iterator<Item=Event> {
         let (start, end) = self.bosses().fold((u64::MAX, 0), |(start, end), a| (cmp::min(start, a.first_aware()), cmp::max(end, a.last_aware())));
 
-        self.buffer.events.iter().map(|e| e.to_event()).filter(move |e| start <= e.time && e.time <= end)
+        self.buffer.events.iter().filter_map(IntoEvent::to_event).filter(move |e| start <= e.time && e.time <= end)
     }
 
     pub fn skills(&self) -> impl Iterator<Item=&Skill> {

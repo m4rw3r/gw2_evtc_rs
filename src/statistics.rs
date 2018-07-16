@@ -1,5 +1,8 @@
 use TargetEvent;
 use HitType;
+use EventType;
+use Activation;
+use Event;
 
 use fnv::FnvHashMap;
 
@@ -33,6 +36,7 @@ impl ::std::iter::FromIterator<$u> for $ty {
 
 sink_from_iter!(Hits, TargetEvent);
 sink_from_iter!(Abilities, TargetEvent);
+sink_from_iter!(ActivationLog, Event);
 
 /// Statistics for hits
 #[derive(Debug, Copy, Clone, Serialize)]
@@ -162,6 +166,60 @@ impl Sink<TargetEvent> for Abilities {
         match e {
             TargetEvent::Damage { skill, .. } => self.abilities.entry(skill).or_insert(Default::default()).add_event(e),
             _ => {}
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct ActivationEntry {
+    time:      u64,
+    skill:     u16,
+    quickness: bool,
+    canceled:  bool,
+    duration:  u32,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ActivationLog {
+    last: Option<(u64, u16, Activation)>,
+    log:  Vec<ActivationEntry>,
+}
+
+impl Serialize for ActivationLog {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+      where S: Serializer {
+        self.log.serialize(serializer)
+    }
+}
+
+impl Sink<Event> for ActivationLog {
+    #[inline]
+    fn add_event(&mut self, e: Event) {
+        if let Event { time, event: EventType::Activation { skill, cast }, .. } = e {
+            match cast {
+                Activation::Normal(_) | Activation::Quickness(_) => self.last = Some((time, skill, cast)),
+                x => if let Some((time, s, start)) = self.last {
+                    if skill != s {
+                        return;
+                    }
+
+                    self.log.push(ActivationEntry {
+                        time,
+                        skill,
+                        quickness: if let Activation::Quickness(_) = start { true } else { false },
+                        canceled:  if let Activation::Cancel(_) = x { true } else { false },
+                        duration: match x {
+                            Activation::Normal(d)     => d,
+                            Activation::Quickness(d)  => d,
+                            Activation::CancelFire(d) => d,
+                            Activation::Cancel(d)     => d,
+                            Activation::Reset         => 0,
+                        },
+                    });
+
+                    self.last = None;
+                }
+            }
         }
     }
 }

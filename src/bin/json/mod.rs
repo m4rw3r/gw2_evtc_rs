@@ -11,10 +11,13 @@ use evtc::SkillList;
 use evtc::SpeciesId;
 use evtc::TargetEvent;
 use evtc::TimeSeries;
+use evtc::EventType;
+use evtc::Event;
 
 use evtc::raw::Language;
 
 use evtc::statistics::Abilities;
+use evtc::statistics::ActivationLog;
 use evtc::statistics::Hits;
 use evtc::statistics::Sink;
 
@@ -76,6 +79,8 @@ struct PlayerSummary<'a> {
     #[serde(rename="bossHits")]
     boss_hit_stats:     PowerCondiHits,
     agents:             Vec<AgentStatistics<'a>>,
+    #[serde(rename="activationLog")]
+    activation_log:     ActivationLog,
     series:             TimeSeries,
 }
 
@@ -135,6 +140,7 @@ pub fn parse_data<W: Write>(buffer: &[u8], logname: String, writer: W) -> Result
             agent: minions[0],
             stats: meta.encounter_events().from_any_of(minions).targeting_any_of(&bosses[..]).target_events().collect(),
         }).collect(),
+        activation_log: meta.encounter_events().from_agent_and_gadgets(a).filter(|e| if let Event { event: EventType::Activation { .. }, .. } = e { true } else { false }).collect(),
         series:    TimeSeries::parse_agent(&meta, a),
     }).collect();
 

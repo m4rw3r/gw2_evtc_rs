@@ -31,7 +31,13 @@ pub use event::*;
 
 pub trait IntoEvent {
     #[inline]
-    fn to_event(&self) -> Event;
+    fn is_meta_event(&self) -> bool;
+
+    #[inline]
+    fn to_meta_event(&self) -> Option<MetaEvent>;
+
+    #[inline]
+    fn to_event(&self) -> Option<Event>;
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -88,6 +94,7 @@ pub struct TimeSeries {
 }
 
 impl TimeSeries {
+    #[inline]
     pub fn new(meta: &Metadata) -> Self {
         assert!(meta.log_end() > meta.log_start());
 
@@ -96,6 +103,7 @@ impl TimeSeries {
         }
     }
 
+    #[inline]
     pub fn parse_agent(meta: &Metadata, agent: &Agent) -> Self {
         let mut series = Self::new(meta);
 
@@ -130,29 +138,27 @@ impl TimeSeries {
         }
     }
 
+    #[inline]
     fn parse_item(&mut self, entry: &mut TimeEntry, event: Event, meta: &Metadata) {
         match event.event {
-            EventType::Agent { agent: _, instance: _, master_instance, event: nested } => match nested {
-                AgentEvent::ChangeDown      => entry.downed      = true,
-                AgentEvent::ChangeUp        => entry.revived     = true,
-                // Got to check if it is a minion which died
-                AgentEvent::ChangeDead if master_instance.is_none() => entry.dead        = true,
-                AgentEvent::HealthUpdate(h) => entry.health      = Some(h),
-                AgentEvent::WeaponSwap      => entry.weapon_swap = true,
-                AgentEvent::WithTarget { agent, instance, event: target_event } => match target_event {
-                    TargetEvent::Damage { damage, .. } => {
-                        entry.damage += damage;
+            EventType::ChangeDown      => entry.downed      = true,
+            EventType::ChangeUp        => entry.revived     = true,
+            // Got to check if it is a minion which died
+            EventType::ChangeDead if event.master_instance.is_none() => entry.dead        = true,
+            EventType::HealthUpdate(h) => entry.health      = Some(h),
+            EventType::WeaponSwap      => entry.weapon_swap = true,
+            EventType::WithTarget { agent, event: target_event, .. } => match target_event {
+                TargetEvent::Damage { damage, .. } => {
+                    entry.damage += damage;
 
-                        if meta.bosses().any(|b| b.id() == agent) {
-                            entry.boss_dmg += damage;
-                        }
-                    },
-                    _ => {}
-                }
-                // FIXME: Add more stuff, like DPS
-                _                           => {}
-            },
-            _                => unreachable!(),
+                    if meta.bosses().any(|b| b.id() == agent) {
+                        entry.boss_dmg += damage;
+                    }
+                },
+                _ => {}
+            }
+            // FIXME: Add more stuff, like DPS
+            _                           => {}
         }
     }
 }
