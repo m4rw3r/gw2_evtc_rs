@@ -145,8 +145,10 @@ impl<I: Iterator<Item=Event>> Iterator for TargetEventIterator<I> {
     type Item = TargetEvent;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(Event { event: EventType::WithTarget { event, ..}, .. }) = self.inner.next() {
-            return Some(event);
+        while let Some(e) = self.inner.next() {
+            if let Event { event: EventType::WithTarget { event, ..}, .. } = e {
+                return Some(event);
+            }
         }
 
         None
