@@ -2,6 +2,7 @@ import { h
        , Component
        } from "preact";
 
+import { groupBy } from "./util";
 import Profession from "./icons/Profession";
 
 export const TAB_SUMMARY = "_SUMMARY";
@@ -44,17 +45,8 @@ export default class PlayerList extends Component {
 
     const Subgroup = (players) => <div class="subgroup">{players.map(Player)}</div>;
 
-    const grouped = players.slice()
-           .sort((a, b) => a.agent.name.localeCompare(b.agent.name))
-           .reduce((g, p) => {
-             const { agent: { subgroup } } = p;
-      g[subgroup] = g[subgroup] || [];
-      g[subgroup].push(p);
+    const grouped = groupBy(players, ({ agent: { subgroup }}) => subgroup).map(group => group.sort((a, b) => a.agent.name.localeCompare(b.agent.name)));
 
-      return g;
-    }, {});
-
-    const subgroups    = Object.keys(grouped).sort().map(key => grouped[key]);
     const totalBossDPS = players.map(player => player.bossHits.power.totalDamage + player.bossHits.condi.totalDamage).reduce((a, b) => a + b, 0) / bossDuration;
 
     return <div class="player-list">
@@ -69,7 +61,7 @@ export default class PlayerList extends Component {
         <div class="info"></div>
       </div>
 
-      {subgroups.map(Subgroup)}
+      {grouped.map(Subgroup)}
     </div>;
   }
 }

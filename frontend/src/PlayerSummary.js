@@ -9,7 +9,7 @@ const Agent = ({ agent, bossHits: { abilities }, abilityNames, skillData, allBos
   const list = Object.keys(abilities).map(k => ({...abilities[k], name: abilityNames[k], key: k, skillData: skillData[k|0] })).sort((a, b) => b.totalDamage - a.totalDamage);
 
   const Ability = ({ name, key, totalDamage, hits, criticals, flanking, glancing, scholar, moving, interrupted, blocked, evaded, absorbed, missed, minDamage, maxDamage, skillData }) => <tr>
-    <td>{skillData ? <img src={skillData.icon} /> : null}</td>
+    <td class="icon">{skillData ? <img src={skillData.icon} /> : null}</td>
     <td class="name" title={key}>{name || (skillData && skillData.name) || key}</td>
     <td>{totalDamage}</td>
     <td>{(totalDamage / allBossDamage * 100).toFixed(2)}%</td>
@@ -19,8 +19,7 @@ const Agent = ({ agent, bossHits: { abilities }, abilityNames, skillData, allBos
     <td>{flanking}</td>
     <td>{glancing}</td>
     <td>{moving}</td>
-    <td>{interrupted}</td>
-    <td>{blocked + evaded + absorbed + missed}</td>
+    <td>{blocked + evaded + absorbed + missed + interrupted}</td>
     <td>{minDamage}</td>
     <td>{maxDamage}</td>
   </tr>;
@@ -28,7 +27,7 @@ const Agent = ({ agent, bossHits: { abilities }, abilityNames, skillData, allBos
   return <div class="agent">
     <table class="ability-list">
       <tr>
-        <th></th>
+        <th class="icon"></th>
         <th class="name">Skill name</th>
         <th>Total Damage</th>
         <th>(%)</th>
@@ -38,7 +37,6 @@ const Agent = ({ agent, bossHits: { abilities }, abilityNames, skillData, allBos
         <th>Flanking</th>
         <th>Glancing</th>
         <th>Moving</th>
-        <th>Interrupted</th>
         <th title="Also includes blocked, missed, evaded hits">Absorbed</th>
         <th>Min Damage</th>
         <th>Max Damage</th>
@@ -63,6 +61,7 @@ export default class PlayerSummary extends Component {
   loadSkills(player) {
     // Load all skill-icons
     const skillIds = [].concat.apply([], player.agents.map(({ bossHits: { abilities }}) => Object.keys(abilities)))
+        .concat(player.activationLog.map(({ skill }) => skill))
         .filter((v, i, a) => a.indexOf(v) === i);
 
     skillIds.map(getSkillData).forEach(p => p.then(s => this.setState({
@@ -86,6 +85,18 @@ export default class PlayerSummary extends Component {
     const { agent: { name, profession }, bossHits, agents } = player
     const currentAgent = agents.find(a => a.agent.speciesId === selectedAgent);
 
+    const CastSkill = ({ time, skill, canceled, duration }) => {
+      const d = skillData[skill|0];
+
+      if( ! d) {
+        return;
+      }
+
+      return d.slot === "Weapon_1" ? null : <li class={canceled ? "canceled" : ""}>
+        <img src={skillData[skill|0].icon} title={d.name + " " + ((time) / 1000)} />
+      </li>;
+    }
+
     return <div class="player-summary">
       <h3>
         <Profession class="profession" profession={profession} />
@@ -102,6 +113,14 @@ export default class PlayerSummary extends Component {
       </ul> : null}
 
       <Agent {...currentAgent} abilityNames={skills} skillData={skillData} allBossDamage={bossHits.condi.totalDamage + bossHits.power.totalDamage} />
+
+      <div>
+        {player.activationLog.map(CastSkill)}
+      </div>
+
+      <pre>
+        {JSON.stringify(player.activationLog, null, 2)}
+      </pre>
     </div>;
   }
 }

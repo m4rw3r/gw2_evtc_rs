@@ -25,7 +25,7 @@ let   queue     = [];
 skills.forEach(s => skillData[s.id] = Promise.resolve(s));
 
 const requestIdleCb  = window.requestIdleCallback || window.setTimeout;
-const GW2_API_SKILLS = "https://api.guildwars2.com/v2/skills?ids=";
+const GW2_API_SKILLS = "https://api.guildwars2.com/v2/skills?page_size=200&lang=en&ids=";
 
 const fetchSkills = () => {
   const fetching = queue;
@@ -63,3 +63,16 @@ export const getSkillData = skillId => {
 
   return skillData[skillId];
 }
+
+export const groupBy = (items, getKey) => {
+  const grouped = items.reduce((a, i) => {
+    const k = getKey(i);
+
+    a[k] = a[k] || [];
+    a[k].push(i);
+
+    return a;
+  }, {});
+
+  return Object.keys(grouped).sort().map(key => grouped[key]);
+};
