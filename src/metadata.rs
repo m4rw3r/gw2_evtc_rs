@@ -1,6 +1,7 @@
 use IntoEvent;
 use Event;
 use MetaEvent;
+use TargetEvent;
 use EventType;
 
 use fnv::FnvHashMap;
@@ -219,7 +220,14 @@ impl<'a> Metadata<'a> {
                 EventType::EnterCombat(_) |
                   EventType::Spawn        => meta.instid = instance,
                 EventType::PointOfView    => meta.is_pov = true,
+                // TODO: For players, revert this if death is after *all* of the boss deaths
                 EventType::ChangeDead     => meta.died   = Some(time),
+                // Xera?
+                // Second one
+                EventType::Despawn     => meta.died   = Some(time),
+                // First one becomes invulnerable using a skill
+                EventType::WithTarget { event: TargetEvent::Buff(762, _), .. } => meta.died = Some(time),
+                EventType::WithTarget { event: TargetEvent::Buff(34113, _), .. } => meta.died = Some(time),
                 _                         => {},
             }
 
@@ -253,7 +261,9 @@ impl<'a> Metadata<'a> {
     pub fn bosses(&self) -> impl Iterator<Item=&Agent> {
         let boss_id = self.buffer.header.boss_id;
         
-        self.agents.iter().filter(move |a| a.species_id() == Some(boss_id))
+        self.agents.iter().filter(move |a| a.species_id() == Some(boss_id) ||
+            // Xera:
+            boss_id == SpeciesId::new(16246) && a.species_id() == Some(SpeciesId::new(16286)))
     }
 
     pub fn boss(&self) -> Boss {
