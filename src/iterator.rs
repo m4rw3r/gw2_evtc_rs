@@ -107,9 +107,9 @@ impl<'a, I: Iterator<Item=Event>> Iterator for FromAgents<'a, I> {
         while let Some(e) = self.inner.next() {
             let Event { agent, instance, .. } = e;
 
-            if self.agents.iter().any(|a| agent == a.id() || instance == a.instance_id()) {
+            if self.agents.iter().any(|a| agent == a.id() /* || instance == a.instance_id() */) {
                 return Some(e);
-            } 
+            }
         }
 
         None
