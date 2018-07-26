@@ -4,7 +4,6 @@ use evtc::raw;
 
 use evtc::Agent;
 use evtc::Boss;
-use evtc::EventIteratorExt;
 use evtc::HitType;
 use evtc::Metadata;
 use evtc::SkillList;
@@ -20,6 +19,9 @@ use evtc::statistics::Abilities;
 use evtc::statistics::ActivationLog;
 use evtc::statistics::Hits;
 use evtc::statistics::Sink;
+use evtc::Target;
+use evtc::Source;
+use evtc::Damage;
 
 use serde_json;
 
@@ -35,13 +37,12 @@ pub struct PowerCondiHits {
 }
 
 // TODO: Should probably implement using derive
-impl Sink<TargetEvent> for PowerCondiHits {
+impl<T: Damage> Sink<T> for PowerCondiHits {
     #[inline]
-    fn add_event(&mut self, e: TargetEvent) {
-        match e {
-            TargetEvent::Damage { hit_type: HitType::Condi, .. } => self.condi.add_event(e),
-            TargetEvent::Damage { .. }                           => self.power.add_event(e),
-            _ => {},
+    fn add_event(&mut self, e: T) {
+        match e.hit_type() {
+            HitType::Condi => self.condi.add_event(e),
+            _              => self.power.add_event(e),
         }
     }
 }
@@ -52,17 +53,17 @@ pub struct AbilityAndTotal {
     abilities: Abilities,
 }
 
-impl Sink<TargetEvent> for AbilityAndTotal {
+impl<T: Damage> Sink<T> for AbilityAndTotal {
     #[inline]
-    fn add_event(&mut self, e: TargetEvent) {
-        self.total.add_event(e);
+    fn add_event(&mut self, e: T) {
+        self.total.add_event(e.clone());
         self.abilities.add_event(e);
     }
 }
 
 // Should probably be a part of the derive
-sink_from_iter!(PowerCondiHits, TargetEvent);
-sink_from_iter!(AbilityAndTotal, TargetEvent);
+sink_from_iter!(PowerCondiHits, Damage);
+sink_from_iter!(AbilityAndTotal, Damage);
 
 #[derive(Debug, Clone, Serialize)]
 struct AgentStatistics<'a> {
@@ -131,16 +132,33 @@ pub fn parse_data<W: Write>(buffer: &[u8], logname: String, writer: W) -> Result
     let meta = Metadata::new(&evtc);
 
     let bosses: Vec<_> = meta.bosses().collect();
+    let boss_ids: Vec<_> = bosses.iter().map(|b| b.id()).collect();
 
     let player_summaries = meta.agents().iter().filter(|a| a.is_player_character()).map(|a| PlayerSummary {
         agent: a,
-        hit_stats:          meta.encounter_events().from_agent_and_gadgets(a).target_events().collect(),
-        boss_hit_stats:     meta.encounter_events().from_agent_and_gadgets(a).targeting_any_of(&bosses[..]).target_events().collect(),
-        agents:             (&[vec![a]]).iter().chain(group_agents_by_species(meta.agents_for_master(a)).values()).map(|minions| AgentStatistics {
+        hit_stats:          meta.encounter_events()
+                                .filter_map(Event::into_damage)
+                                .filter_map(|e| e.from_agent_or_gadgets(a.id(), a.instance_id()))
+                                .collect(),
+        boss_hit_stats:     meta.encounter_events()
+                                .filter_map(Event::into_damage)
+                                .filter_map(|e| e.from_agent_or_gadgets(a.id(), a.instance_id()))
+                                .filter_map(|e| e.targeting_any_of(boss_ids.iter().cloned()))
+                                .collect(),
+        agents:             (&[vec![a]]).iter()
+                                        .chain(group_agents_by_species(meta.agents_for_master(a)).values())
+                                        .map(|minions| AgentStatistics {
             agent: minions[0],
-            stats: meta.encounter_events().from_any_of(minions).targeting_any_of(&bosses[..]).target_events().collect(),
+            stats: meta.encounter_events()
+                       .filter_map(Event::into_damage)
+                       .filter_map(|e| e.from_any_of(minions.iter().map(|m| m.id())))
+                       .filter_map(|e| e.targeting_any_of(boss_ids.iter().cloned()))
+                       .collect(),
         }).collect(),
-        activation_log: meta.encounter_events().from_agent_and_gadgets(a).filter(|e| if let Event { event: EventType::Activation { .. }, .. } = e { true } else { false }).collect(),
+        activation_log: meta.encounter_events()
+                            .filter_map(|e| e.from_agent_or_gadgets(a.id(), a.instance_id()))
+                            .filter_map(Source::into_activation)
+                            .collect(),
         series:    TimeSeries::parse_agent(&meta, a),
     }).collect();
 

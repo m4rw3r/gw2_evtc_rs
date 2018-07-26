@@ -1,8 +1,7 @@
 use TargetEvent;
 use HitType;
-use EventType;
-use Activation;
-use Event;
+
+use event::*;
 
 use fnv::FnvHashMap;
 
@@ -19,10 +18,10 @@ pub trait Sink<T>: Default {
 
 #[macro_export]
 macro_rules! sink_from_iter {
-    ($ty:ty, $u:ty) => {
-impl ::std::iter::FromIterator<$u> for $ty {
-    fn from_iter<I: IntoIterator<Item=$u>>(iter: I) -> Self {
-        let mut s: $ty = Default::default();
+    ($t:ident, $u:ident) => {
+impl<T: $u> ::std::iter::FromIterator<T> for $t {
+    fn from_iter<I: IntoIterator<Item=T>>(iter: I) -> Self {
+        let mut s: $t = Default::default();
 
         for e in iter {
             s.add_event(e);
@@ -34,9 +33,9 @@ impl ::std::iter::FromIterator<$u> for $ty {
     }
 }
 
-sink_from_iter!(Hits, TargetEvent);
-sink_from_iter!(Abilities, TargetEvent);
-sink_from_iter!(ActivationLog, Event);
+sink_from_iter!(Hits, Damage);
+sink_from_iter!(Abilities, Damage);
+sink_from_iter!(ActivationLog, Activation);
 
 /// Statistics for hits
 #[derive(Debug, Copy, Clone, Serialize)]
@@ -100,41 +99,32 @@ impl Default for Hits {
     }
 }
 
-impl Sink<TargetEvent> for Hits {
+impl<T: Damage> Sink<T> for Hits {
     #[inline]
-    fn add_event(&mut self, e: TargetEvent) {
-        match e {
-            TargetEvent::Damage {
-                damage,
-                flanking,
-                moving,
-                src_over90,
-                hit_type,
-                ..
-            } => {
-                debug_assert!(if hit_type.is_zero() { damage == 0 } else { true });
+    fn add_event(&mut self, e: T) {
+        let hit_type = e.hit_type();
+        let damage   = e.damage();
 
-                self.total_damage += damage;
-                self.hits         += 1;
-                self.min_damage    = cmp::min(self.min_damage, damage);
-                self.max_damage    = cmp::max(self.max_damage, damage);
+        debug_assert!(if hit_type.is_zero() { damage == 0 } else { true });
 
-                if flanking   { self.flanking += 1; }
-                if moving     { self.moving   += 1; }
-                if src_over90 { self.scholar  += 1; }
+        self.total_damage += damage;
+        self.hits         += 1;
+        self.min_damage    = cmp::min(self.min_damage, damage);
+        self.max_damage    = cmp::max(self.max_damage, damage);
 
-                match hit_type {
-                    HitType::Crit      => self.criticals   += 1,
-                    HitType::Glance    => self.glancing    += 1,
-                    HitType::Block     => self.blocked     += 1,
-                    HitType::Evade     => self.evaded      += 1,
-                    HitType::Interrupt => self.interrupted += 1,
-                    HitType::Absorb    => self.absorbed    += 1,
-                    HitType::Blind     => self.missed      += 1,
-                    _                  => {},
-                }
-            },
-            _ => {},
+        if e.flanking() { self.flanking += 1; }
+        if e.moving()   { self.moving   += 1; }
+        if e.over90()   { self.scholar  += 1; }
+
+        match hit_type {
+            HitType::Crit      => self.criticals   += 1,
+            HitType::Glance    => self.glancing    += 1,
+            HitType::Block     => self.blocked     += 1,
+            HitType::Evade     => self.evaded      += 1,
+            HitType::Interrupt => self.interrupted += 1,
+            HitType::Absorb    => self.absorbed    += 1,
+            HitType::Blind     => self.missed      += 1,
+            _                  => {},
         }
     }
 }
@@ -160,13 +150,10 @@ impl Default for Abilities {
     }
 }
 
-impl Sink<TargetEvent> for Abilities {
+impl<T: Damage> Sink<T> for Abilities {
     #[inline]
-    fn add_event(&mut self, e: TargetEvent) {
-        match e {
-            TargetEvent::Damage { skill, .. } => self.abilities.entry(skill).or_insert(Default::default()).add_event(e),
-            _ => {}
-        }
+    fn add_event(&mut self, e: T) {
+        self.abilities.entry(e.skill()).or_insert(Default::default()).add_event(e)
     }
 }
 
@@ -181,7 +168,7 @@ pub struct ActivationEntry {
 
 #[derive(Clone, Debug, Default)]
 pub struct ActivationLog {
-    last: Option<(u64, u16, Activation)>,
+    last: Option<(u64, u16, CastType)>,
     log:  Vec<ActivationEntry>,
 }
 
@@ -192,33 +179,34 @@ impl Serialize for ActivationLog {
     }
 }
 
-impl Sink<Event> for ActivationLog {
+impl<T: Activation> Sink<T> for ActivationLog {
     #[inline]
-    fn add_event(&mut self, e: Event) {
-        if let Event { time, event: EventType::Activation { skill, cast }, .. } = e {
-            match cast {
-                Activation::Normal(_) | Activation::Quickness(_) => self.last = Some((time, skill, cast)),
-                x => if let Some((time, s, start)) = self.last {
-                    if skill != s {
-                        return;
-                    }
+    fn add_event(&mut self, e: T) {
+        let cast  = e.cast();
+        let skill = e.skill();
 
-                    self.log.push(ActivationEntry {
-                        time,
-                        skill,
-                        quickness: if let Activation::Quickness(_) = start { true } else { false },
-                        canceled:  if let Activation::Cancel(_) = x { true } else { false },
-                        duration: match x {
-                            Activation::Normal(d)     => d,
-                            Activation::Quickness(d)  => d,
-                            Activation::CancelFire(d) => d,
-                            Activation::Cancel(d)     => d,
-                            Activation::Reset         => 0,
-                        },
-                    });
-
-                    self.last = None;
+        match cast {
+            CastType::Normal(_) | CastType::Quickness(_) => self.last = Some((e.time(), skill, cast)),
+            x => if let Some((time, s, start)) = self.last {
+                if skill != s {
+                    return;
                 }
+
+                self.log.push(ActivationEntry {
+                    time,
+                    skill,
+                    quickness: if let CastType::Quickness(_) = start { true } else { false },
+                    canceled:  if let CastType::Cancel(_)    = x { true } else { false },
+                    duration: match x {
+                        CastType::Normal(d)     => d,
+                        CastType::Quickness(d)  => d,
+                        CastType::CancelFire(d) => d,
+                        CastType::Cancel(d)     => d,
+                        CastType::Reset         => 0,
+                    },
+                });
+
+                self.last = None;
             }
         }
     }

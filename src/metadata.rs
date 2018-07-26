@@ -1,8 +1,8 @@
-use IntoEvent;
 use Event;
 use MetaEvent;
 use TargetEvent;
-use EventType;
+
+use event::*;
 
 use fnv::FnvHashMap;
 
@@ -14,11 +14,12 @@ use std::u64;
 use std::cmp;
 use std::fmt;
 
-use raw::Agent as RawAgent;
-use raw::EvtcBuf;
-use raw::Language;
-use raw::Skill;
-use raw::UNLISTED_SKILLS;
+use event::raw::Agent as RawAgent;
+use event::raw::EvtcBuf;
+use event::raw::Language;
+use event::raw::Skill;
+use event::raw::UNLISTED_SKILLS;
+use event::raw::CombatEvent;
 
 use types::AgentId;
 use types::Boss;
@@ -192,48 +193,49 @@ impl<'a> Metadata<'a> {
         let mut lang  = Language::English;
 
         // Determine meta stuff
-        for e in buffer.events.iter().filter_map(IntoEvent::to_meta_event) {
-            match e {
+        for e in buffer.events.iter().filter_map(Event::into_meta) {
+            match e.into_enum() {
                 // TODO: Save the extra values
-                MetaEvent::LogStart { server, .. } => start = server,
-                MetaEvent::LogEnd   { server, .. } => end   = server,
-                MetaEvent::Language(l)             => lang  = l,
-                MetaEvent::Gw2Build(b)             => build = b,
-                MetaEvent::ShardId(s)              => shard = s,
+                MetaEventData::LogStart { server, .. } => start = server,
+                MetaEventData::LogEnd   { server, .. } => end   = server,
+                MetaEventData::Language(l)             => lang  = l,
+                MetaEventData::Gw2Build(b)             => build = b,
+                MetaEventData::ShardId(s)              => shard = s,
             }
         }
 
-        for Event { time, agent, instance, master_instance, event } in buffer.events.iter().filter_map(IntoEvent::to_event) {
-            let master_agent = master_instance.and_then(|i| map.iter().find(|(_id, m)| m.instid == i).map(|(&id, _)| id));
+        for e in buffer.events.iter().filter_map(Event::into_source) {
+            let master_agent = e.master_instance().and_then(|i| map.iter().find(|(_id, m)| m.instid == i).map(|(&id, _)| id));
 
-            let mut meta = map.entry(agent).or_insert(AgentMetadata {
+            let mut meta = map.entry(e.agent()).or_insert(AgentMetadata {
                 instid:        InstanceId::empty(),
-                first_aware:   time,
-                last_aware:    time,
+                first_aware:   e.time(),
+                last_aware:    e.time(),
                 master_instid: InstanceId::empty(),
                 master_agent:  AgentId::empty(),
                 died:          None,
                 is_pov:        false,
             });
 
-            match event {
-                EventType::EnterCombat(_) |
-                  EventType::Spawn        => meta.instid = instance,
-                EventType::PointOfView    => meta.is_pov = true,
+            match e.state_change() {
+                Some(StateChange::EnterCombat(_)) |
+                  Some(StateChange::Spawn)     => meta.instid = e.instance(),
+                Some(StateChange::PointOfView) => meta.is_pov = true,
                 // TODO: For players, revert this if death is after *all* of the boss deaths
-                EventType::ChangeDead     => meta.died   = Some(time),
+                Some(StateChange::ChangeDead)  => meta.died   = Some(e.time()),
                 // Xera?
                 // Second one
-                EventType::Despawn     => meta.died   = Some(time),
+                Some(StateChange::Despawn)     => meta.died   = Some(e.time()),
                 // First one becomes invulnerable using a skill
-                EventType::WithTarget { event: TargetEvent::Buff(762, _), .. } => meta.died = Some(time),
-                EventType::WithTarget { event: TargetEvent::Buff(34113, _), .. } => meta.died = Some(time),
-                _                         => {},
+                // FIXME
+                //StateChange::WithTarget { event: TargetEvent::Buff(762, _), .. } => meta.died = Some(e.time()),
+                //StateChange::WithTarget { event: TargetEvent::Buff(34113, _), .. } => meta.died = Some(e.time()),
+                _                              => {},
             }
 
-            meta.last_aware = time;
+            meta.last_aware = e.time();
 
-            if let Some(i) = master_instance {
+            if let Some(i) = e.master_instance() {
                 meta.master_instid = i;
                 meta.master_agent  = master_agent.unwrap_or(meta.master_agent);
             }
@@ -260,7 +262,7 @@ impl<'a> Metadata<'a> {
 
     pub fn bosses(&self) -> impl Iterator<Item=&Agent> {
         let boss_id = self.buffer.header.boss_id;
-        
+
         self.agents.iter().filter(move |a| a.species_id() == Some(boss_id) ||
             // Xera:
             boss_id == SpeciesId::new(16246) && a.species_id() == Some(SpeciesId::new(16286)))
@@ -272,10 +274,11 @@ impl<'a> Metadata<'a> {
 
     /// Only returns the events which happened while the boss(es) were present in the fight,
     /// does not contain gaps.
-    pub fn encounter_events(&'a self) -> impl 'a + Iterator<Item=Event> {
+    pub fn encounter_events(&'a self) -> impl 'a + Iterator<Item=&'a CombatEvent> {
+        // TODO: Move to method
         let (start, end) = self.bosses().fold((u64::MAX, 0), |(start, end), a| (cmp::min(start, a.first_aware()), cmp::max(end, a.last_aware())));
 
-        self.buffer.events.iter().filter_map(IntoEvent::to_event).filter(move |e| start <= e.time && e.time <= end)
+        self.buffer.events.iter().filter(move |e| start <= e.time() && e.time() <= end)
     }
 
     pub fn skills(&self) -> impl Iterator<Item=&Skill> {

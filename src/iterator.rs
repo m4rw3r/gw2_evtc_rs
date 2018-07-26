@@ -57,14 +57,12 @@ pub struct FromAgentIterator<I> {
     inner:    I,
 }
 
-impl<I: Iterator<Item=Event>> Iterator for FromAgentIterator<I> {
-    type Item = Event;
+impl<I: Iterator<Item=T>, T: Event> Iterator for FromAgentIterator<I> {
+    type Item = T::SourceEvent;
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(e) = self.inner.next() {
-            let Event { agent, .. } = e;
-
-            if agent == self.agent_id {
+            if let Some(e) = e.from_agent(self.agent_id) {
                 return Some(e);
             }
         }
@@ -79,14 +77,17 @@ pub struct FromAgentGadgetsIterator<I> {
     inner:    I,
 }
 
-impl<I: Iterator<Item=Event>> Iterator for FromAgentGadgetsIterator<I> {
-    type Item = Event;
+impl<I: Iterator<Item=T>, T: Event> Iterator for FromAgentGadgetsIterator<I> {
+    type Item = T::SourceEvent;
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(e) = self.inner.next() {
-            let Event { agent, master_instance, .. } = e;
+            if let Some(e) = e.from_agent(self.agent_id) {
+                return Some(e);
+            }
 
-            if agent == self.agent_id || master_instance == Some(self.instance) {
+            // TODO: Can we merge?
+            if let Some(e) = e.from_gadgets(self.instance) {
                 return Some(e);
             }
         }
@@ -129,7 +130,7 @@ impl<'a, I: Iterator<Item=Event>> Iterator for TargetingAgents<'a, I> {
             if let Event { event: EventType::WithTarget { agent, instance, .. }, .. } = e {
                 if self.agents.iter().any(|a| agent == a.id() || instance == a.instance_id()) {
                     return Some(e);
-                } 
+                }
             }
         }
 

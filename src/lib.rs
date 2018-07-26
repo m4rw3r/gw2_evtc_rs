@@ -3,12 +3,19 @@ extern crate serde;
 extern crate serde_derive;
 extern crate fnv;
 
-mod event;
-mod types;
-mod metadata;
-pub mod raw;
+pub mod event;
 pub mod statistics;
-pub mod iterator;
+//pub mod iterator;
+
+mod metadata;
+mod types;
+
+//pub use iterator::EventIteratorExt;
+pub use event::*;
+pub use types::*;
+
+//pub mod statistics;
+//pub mod iterator;
 
 use serde::ser::Serialize;
 use serde::ser::Serializer;
@@ -16,7 +23,7 @@ use serde::ser::Serializer;
 use std::i64;
 use std::u64;
 
-pub use iterator::EventIteratorExt;
+//pub use iterator::EventIteratorExt;
 pub use types::Profession;
 pub use types::Boss;
 pub use types::InstanceId;
@@ -29,6 +36,7 @@ pub use metadata::Metadata;
 pub use metadata::SkillList;
 pub use event::*;
 
+/*
 pub trait IntoEvent {
     #[inline]
     fn is_meta_event(&self) -> bool;
@@ -39,6 +47,7 @@ pub trait IntoEvent {
     #[inline]
     fn to_event(&self) -> Option<Event>;
 }
+*/
 
 #[derive(Debug, Clone, Serialize)]
 struct TimeEntry {
@@ -106,16 +115,18 @@ impl TimeSeries {
     #[inline]
     pub fn parse_agent(meta: &Metadata, agent: &Agent) -> Self {
         let mut series = Self::new(meta);
+        let agent_id = agent.id();
+        let instance = agent.instance_id();
 
-        series.parse(meta.encounter_events().from_agent_and_gadgets(agent), meta);
+        series.parse(meta.encounter_events().filter_map(move |e| e.from_agent_or_gadgets(agent_id, instance)), meta);
 
         series
     }
 
     #[inline]
-    pub fn parse<I: Iterator<Item=Event>>(&mut self, mut iter: I, meta: &Metadata) {
+    pub fn parse<I: Iterator<Item=T>, T: Source>(&mut self, mut iter: I, meta: &Metadata) {
         let mut entry = if let Some(event) = iter.next() {
-            let mut entry = TimeEntry::with_time(event.time / 1000);
+            let mut entry = TimeEntry::with_time(event.time() / 1000);
 
             self.parse_item(&mut entry, event, meta);
 
@@ -126,12 +137,12 @@ impl TimeSeries {
         };
 
         for e in iter {
-            if entry.time != e.time / 1000 {
+            if entry.time != e.time() / 1000 {
                 if entry.has_data() {
                     self.series.push(entry);
                 }
 
-                entry = TimeEntry::with_time(e.time / 1000);
+                entry = TimeEntry::with_time(e.time() / 1000);
             }
 
             self.parse_item(&mut entry, e, meta);
@@ -139,26 +150,25 @@ impl TimeSeries {
     }
 
     #[inline]
-    fn parse_item(&mut self, entry: &mut TimeEntry, event: Event, meta: &Metadata) {
-        match event.event {
-            EventType::ChangeDown      => entry.downed      = true,
-            EventType::ChangeUp        => entry.revived     = true,
-            // Got to check if it is a minion which died
-            EventType::ChangeDead if event.master_instance.is_none() => entry.dead        = true,
-            EventType::HealthUpdate(h) => entry.health      = Some(h),
-            EventType::WeaponSwap      => entry.weapon_swap = true,
-            EventType::WithTarget { agent, event: target_event, .. } => match target_event {
-                TargetEvent::Damage { damage, .. } => {
-                    entry.damage += damage;
-
-                    if meta.bosses().any(|b| b.id() == agent) {
-                        entry.boss_dmg += damage;
-                    }
-                },
-                _ => {}
+    fn parse_item<T: Source>(&mut self, entry: &mut TimeEntry, event: T, meta: &Metadata) {
+        if let Some(state) = event.state_change() {
+            match state {
+                StateChange::ChangeDown      => entry.downed      = true,
+                StateChange::ChangeUp        => entry.revived     = true,
+                // Got to check if it is a minion which died
+                StateChange::ChangeDead if event.master_instance().is_none() => entry.dead        = true,
+                StateChange::HealthUpdate(h) => entry.health      = Some(h),
+                StateChange::WeaponSwap      => entry.weapon_swap = true,
+                _ => {},
             }
-            // FIXME: Add more stuff, like DPS
-            _                           => {}
+        }
+
+        if let Some(e) = event.into_damage() {
+            entry.damage += e.damage();
+
+            if let Some(b) = e.targeting_any_of(meta.bosses().map(|b| b.id())) {
+                entry.boss_dmg += b.damage();
+            }
         }
     }
 }
