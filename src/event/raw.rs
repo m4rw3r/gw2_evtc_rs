@@ -587,7 +587,7 @@ impl<'a> Event for &'a CombatEvent {
 
     #[inline]
     fn targeting_any_of<I: IntoIterator<Item=AgentId>>(self, agents: I) -> Option<Self::TargetEvent> {
-        if ! self.is_meta() && agents.into_iter().any(|a| a == self.src_agent()) {
+        if ! self.is_meta() && agents.into_iter().any(|a| a == self.dst_agent()) {
             Some(TargetEvent(self))
         }
         else {
@@ -742,7 +742,7 @@ impl<'a> Event for SourceEvent<&'a CombatEvent> {
 
     #[inline]
     fn targeting_any_of<I: IntoIterator<Item=AgentId>>(self, agents: I) -> Option<Self::TargetEvent> {
-        if agents.into_iter().any(|a| a == self.0.src_agent()) {
+        if agents.into_iter().any(|a| a == self.0.dst_agent()) {
             Some(TargetEvent(self.0))
         }
         else {
@@ -888,7 +888,7 @@ impl<'a> Event for TargetEvent<&'a CombatEvent> {
 
     #[inline]
     fn targeting_any_of<I: IntoIterator<Item=AgentId>>(self, agents: I) -> Option<Self::TargetEvent> {
-        if agents.into_iter().any(|a| a == self.0.src_agent()) {
+        if agents.into_iter().any(|a| a == self.0.dst_agent()) {
             Some(self)
         }
         else {
@@ -1138,7 +1138,7 @@ impl<'a> Event for DamageEvent<&'a CombatEvent> {
 
     #[inline]
     fn targeting_any_of<I: IntoIterator<Item=AgentId>>(self, agents: I) -> Option<Self::TargetEvent> {
-        if agents.into_iter().any(|a| a == self.0.src_agent()) {
+        if agents.into_iter().any(|a| a == self.0.dst_agent()) {
             Some(self)
         }
         else {
