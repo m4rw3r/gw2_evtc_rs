@@ -207,100 +207,106 @@ pub enum IFF {
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HitResult {
-    // good physical hit
+    /// good physical hit
     Normal      = 0,
-    // physical hit was crit
+    /// physical hit was crit
     Crit        = 1,
-    // physical hit was glance
+    /// physical hit was glance
     Glance      = 2,
-    // physical hit was blocked eg. mesmer shield 4
+    /// physical hit was blocked eg. mesmer shield 4
     Block       = 3,
-    // physical hit was evaded, eg. dodge or mesmer sword 2
+    /// physical hit was evaded, eg. dodge or mesmer sword 2
     Evade       = 4,
-    // physical hit interrupted something
+    /// physical hit interrupted something
     Interrupt   = 5,
-    // physical hit was "invlun" or absorbed eg. guardian elite
+    /// physical hit was "invlun" or absorbed eg. guardian elite
     Absorb      = 6,
-    // physical hit missed
+    /// physical hit missed
     Blind       = 7,
-    // physical hit was killing hit
+    /// physical hit was killing hit
     KillingBlow = 8,
+    /// physical hit was downing hit
+    DowningBlow = 9,
 }
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CombatActivation {
-    // Not used - not this kind of event
+    /// Not used - not this kind of event
     None       = 0,
-    // Without quickness
+    /// Without quickness
     Normal     = 1,
-    // With quickness (+50% animation-speed)
+    /// With quickness (+50% animation-speed)
     Quickness  = 2,
-    // Cancel with reaching channel time
+    /// Cancel with reaching channel time
     CancelFire = 3,
-    // Cancel without reaching channel time
+    /// Cancel without reaching channel time
     Cancel     = 4,
-    // Animation completed fully
+    /// Animation completed fully
     Reset      = 5,
 }
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CombatStateChange {
-    // not used - not this kind of event
+    /// not used - not this kind of event
     None            = 0,
-    // src_agent entered combat, dst_agent is subgroup
+    /// src_agent entered combat, dst_agent is subgroup
     EnterCombat     = 1,
-    // src_agent left combat
+    /// src_agent left combat
     ExitCombat      = 2,
-    // src_agent is now alive
+    /// src_agent is now alive
     ChangeUp        = 3,
-    // src_agent is now dead
+    /// src_agent is now dead
     ChangeDead      = 4,
-    // src_agent is now downed
+    /// src_agent is now downed
     ChangeDown      = 5,
-    // src_agent is now in game tracking range
+    /// src_agent is now in game tracking range
     Spawn           = 6,
-    // src_agent is no longer being tracked
+    /// src_agent is no longer being tracked
     Despawn         = 7,
-    // src_agent has reached a health marker. dst_agent = percent * 10000 (eg. 99.5% will be 9950)
+    /// src_agent has reached a health marker. dst_agent = percent * 10000 (eg. 99.5% will be 9950)
     HealthUpdate    = 8,
-    // log start. value = server unix timestamp **uint32**. buff_dmg = local unix timestamp. src_agent = 0x637261 (arcdps id)
+    /// log start. value = server unix timestamp **uint32**. buff_dmg = local unix timestamp. src_agent = 0x637261 (arcdps id)
     LogStart        = 9,
-    // log end. value = server unix timestamp **uint32**. buff_dmg = local unix timestamp. src_agent = 0x637261 (arcdps id)
+    /// log end. value = server unix timestamp **uint32**. buff_dmg = local unix timestamp. src_agent = 0x637261 (arcdps id)
     LogEnd          = 10,
-    // src_agent swapped weapon set. dst_agent = current set id (0/1 water, 4/5 land)
+    /// src_agent swapped weapon set. dst_agent = current set id (0/1 water, 4/5 land)
     WeapSwap        = 11,
-    // src_agent has had it's maximum health changed. dst_agent = new max health
+    /// src_agent has had it's maximum health changed. dst_agent = new max health
     MaxHealthUpdate = 12,
-    // src_agent will be agent of "recording" player
+    /// src_agent will be agent of "recording" player
     PointOfView     = 13,
-    // src_agent will be text language
+    /// src_agent will be text language
     Language        = 14,
-    // src_agent will be game build
+    /// src_agent will be game build
     GwBuild         = 15,
-    // src_agent will be sever shard id
+    /// src_agent will be sever shard id
     ShardId         = 16,
-    // src_agent is self, dst_agent is reward id, value is reward type. these are the wiggly boxes that you get
+    /// src_agent is self, dst_agent is reward id, value is reward type. these are the wiggly boxes that you get
     Reward          = 17,
-    // combat event that will appear once per buff per agent on logging start (zero duration, buff==18)
+    /// combat event that will appear once per buff per agent on logging start (zero duration, buff==18)
     BuffInitial     = 18,
-    // src_agent changed, cast float* p = (float*)&dst_agent, access as x/y/z (float[3])
+    /// src_agent changed, cast float* p = (float*)&dst_agent, access as x/y/z (float[3])
     Position        = 19,
-    // src_agent changed, cast float* v = (float*)&dst_agent, access as x/y/z (float[3])
+    /// src_agent changed, cast float* v = (float*)&dst_agent, access as x/y/z (float[3])
     Velocity        = 20,
+    /// src_agent changed, cast float* f = (float*)&dst_agent, access as x/y (float[2])
+    ///
+    /// Since 2018-07-18
+    Facing          = 21,
 }
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CombatBuffRemove {
-    // Not used - not this kind of event
+    /// Not used - not this kind of event
     None   = 0,
-    // All buff stacks removed
+    /// All buff stacks removed
     All    = 1,
-    // Single stack removed. Disabled on server trigger, will happen for each stack on cleanse
+    /// Single stack removed. Disabled on server trigger, will happen for each stack on cleanse
     Single = 2,
-    // Autoremoved by outofcombat or allstack (ignore for strip/cleanse calc, use for in/out volume)
+    /// Autoremoved by outofcombat or allstack (ignore for strip/cleanse calc, use for in/out volume)
     Manual = 3,
 }
 
@@ -348,7 +354,9 @@ pub struct CombatEvent {
     is_flanking:       u8,
     // All or part damage was vs barrier/shield
     is_shields:        u8,
-    _pad2:             u16,
+    // 2018-07-10: zero if on-tick dmg, non-zero otherwise (buff only)
+    is_offcycle:       u8,
+    _pad2:             u8,
 }
 
 impl CombatEvent {
@@ -797,6 +805,11 @@ impl<'a> Source for SourceEvent<&'a CombatEvent> {
 
                 Some(StateChange::Position { x: pos[0], y: pos[1], z: pos[2] })
             },
+            CombatStateChange::Facing        => {
+                let pos: &[f32; 2] = unsafe { mem::transmute(&self.0.dst_agent) };
+
+                Some(StateChange::Facing { x: pos[0], y: pos[1] })
+            },
             _ => None
         }
     }
@@ -1226,6 +1239,7 @@ impl<'a> Damage for DamageEvent<&'a CombatEvent> {
             (_,    HitResult::Absorb)      => HitType::Absorb,
             (_,    HitResult::Blind)       => HitType::Blind,
             (_,    HitResult::KillingBlow) => HitType::KillingBlow,
+            (_,    HitResult::DowningBlow) => HitType::DowningBlow,
         }
     }
 

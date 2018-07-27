@@ -7,6 +7,8 @@ pub mod raw;
 
 pub struct EventMarker;
 
+/// Basic event type, contains methods for accessing data common to all events and to cast the
+/// event into a more specific type.
 pub trait Event: Clone {
     type MetaEvent:   Meta;
     type SourceEvent: Source;
@@ -14,6 +16,7 @@ pub trait Event: Clone {
     type ActivationEvent: Activation;
     type DamageEvent: Damage;
 
+    /// Timestamp of the event in milliseconds, relative time of PoV.
     fn time(&self) -> u64;
     fn into_source(self) -> Option<Self::SourceEvent>;
     fn into_meta(self) -> Option<Self::MetaEvent>;
@@ -63,31 +66,42 @@ pub trait Damage: Target<SourceEvent=Self, TargetEvent=Self, DamageEvent=Self>
     fn over90(&self)   -> bool;
 }
 
+/// Wrapper around an event indicating that the event is a meta-event
 #[derive(Debug, Clone)]
-pub struct MetaEvent<T>(T);
+pub struct MetaEvent<T: Event>(T);
 
+/// Wrapper around an event to indicate that it has a source
 #[derive(Debug, Clone)]
-pub struct SourceEvent<T>(T);
+pub struct SourceEvent<T: Event>(T);
 
+/// Wrapper around an event to indicate it is an activation event
 #[derive(Debug, Clone)]
-pub struct ActivationEvent<T>(T);
+pub struct ActivationEvent<T: Event>(T);
 
+/// Wrapper around an event to indicate that it is a damage event
 #[derive(Debug, Clone)]
-pub struct DamageEvent<T>(T);
+pub struct DamageEvent<T: Event>(T);
 
+/// Wrapper around an event to indicate that it has a target
 #[derive(Debug, Clone)]
-pub struct TargetEvent<T>(T);
+pub struct TargetEvent<T: Event>(T);
 
+/// Wrapper around an event to indicate that it is a buff application/removal event
 #[derive(Debug, Clone)]
-pub struct BuffEvent<T>(T);
+pub struct BuffEvent<T: Event>(T);
 
+/// Data not tied to any actor
 #[derive(Debug, Copy, Clone)]
 pub enum MetaEventData {
-    /// Server unix timestamp, local unix timestamp, arcdpsId
+    /// When the log starts, server unix timestamp, local unix timestamp, arcdpsId
     LogStart { server: u32, local: u32, arcdps_id: u64 },
+    /// When the log ends, server unix timestamp, local unix timestamp, arcdpsId
     LogEnd   { server: u32, local: u32, arcdps_id: u64 },
+    /// The language used of the client
     Language(Language),
+    /// The Guild Wars 2 build id
     Gw2Build(u64),
+    /// The Guild Wars 2 server shard id
     ShardId(u64),
 }
 
@@ -103,6 +117,7 @@ pub enum HitType {
     Absorb,
     Blind,
     KillingBlow,
+    DowningBlow,
 }
 
 impl HitType {
@@ -132,6 +147,7 @@ pub enum StateChange {
     Reward(u64, u32),
     Position { x: f32, y: f32, z: f32 },
     Velocity { x: f32, y: f32, z: f32 },
+    Facing   { x: f32, y: f32 },
     /// Happens once per agent on start
     // TODO: What is this? Should have more data
     BuffInitial,
@@ -139,14 +155,15 @@ pub enum StateChange {
 
 #[derive(Debug, Copy, Clone)]
 pub enum CastType {
-    // Normal cast, expected duration
+    /// Normal cast, expected duration
     Normal(u32),
-    // Fast cast (+50%), expected duration
+    /// Fast cast (+50%), expected duration
     Quickness(u32),
-    // Canceled but started channel, actual duration
+    /// Canceled but started channel, actual duration
     CancelFire(u32),
-    // Canceled before channel, actual duration
+    /// Canceled before channel, actual duration
     Cancel(u32),
+    /// Animation completed fully
     Reset,
 }
 
