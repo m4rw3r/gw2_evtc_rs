@@ -1,33 +1,24 @@
-// use event::Activation;
-// use event::EventType;
-// use event::MetaEvent;
-// use event::Buff;
-// use event::Event;
-// use event::HitType;
-// use event::TargetEvent;
-
-use event::Event;
-use event::Meta;
-use event::Source;
 use event::Activation;
-use event::Target;
-use event::Buff;
-use event::Damage;
-use event::MetaEvent;
-use event::SourceEvent;
 use event::ActivationEvent;
-use event::MetaEventData;
-use event::TargetEvent;
+use event::Buff;
 use event::BuffEvent;
-use event::DamageEvent;
-use event::StateChange;
 use event::CastType;
+use event::Damage;
+use event::DamageEvent;
+use event::Event;
 use event::HitType;
+use event::Meta;
+use event::MetaEvent;
+use event::MetaEventData;
+use event::Source;
+use event::SourceEvent;
+use event::StateChange;
+use event::Target;
+use event::TargetEvent;
 
 use types::AgentId;
-use types::Profession;
 use types::InstanceId;
-// use IntoEvent;
+use types::Profession;
 use types::SpeciesId;
 
 use std::fmt;
@@ -43,12 +34,14 @@ pub static UNLISTED_SKILLS: &'static [Skill] = &[
     // TODO: Add boss-specific skills
 ];
 
+/// The combat data version, `V1` is not binary-compatible with `V2`.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-enum CombatDataVersion {
+pub enum CombatDataVersion {
     V1,
     V2,
 }
 
+/// EVTC-file header.
 #[repr(packed)]
 #[derive(Debug, Copy, Clone)]
 pub struct Header {
@@ -60,7 +53,8 @@ pub struct Header {
 }
 
 impl Header {
-    fn combat_data_version(&self) -> CombatDataVersion {
+    /// The combat data version of the header.
+    pub fn combat_data_version(&self) -> CombatDataVersion {
         if self.version[12] == 1 {
             CombatDataVersion::V2
         }
@@ -70,17 +64,23 @@ impl Header {
     }
 }
 
+/// Stats for an agent.
 #[repr(packed)]
 #[derive(Copy, Clone)]
 pub struct Agent {
+    /// Agent id
     pub id:            AgentId,
     profession:        u32,
-    pub is_elite:      u32,
+    is_elite:          u32,
+    /// Relative amount of toughness of the agent.
     pub toughness:     u16,
+    /// Relative amount of concentration of the agent.
     pub concentration: u16,
+    /// Relative amount of healing power of the agent
     pub healing:       u16,
     _pad2_1:           u16,
-    pub condition_dmg:  u16,
+    /// Relative amount of condition damage of the agent.
+    pub condition_dmg: u16,
     _pad2_2:           u16,
     // Character name [null] Account name [null] Subgroup string literal [null]
     name:            [u8; 68],
@@ -100,17 +100,17 @@ impl Agent {
 
     pub fn name(&self) -> &str {
         // All agent and skill names use UTF8 according to deltaconnected
-        unsafe { str::from_utf8_unchecked(self.name.split(|&c| c == 0).next().expect("Invalid C-string in EVTC Actor data")) }
+        unsafe { str::from_utf8_unchecked(self.name.split(|&c| c == 0).next().expect("Invalid C-string in EVTC Agent data")) }
     }
 
     pub fn account_name(&self) -> &str {
         // All agent and skill names use UTF8 according to deltaconnected
-        unsafe { str::from_utf8_unchecked(self.name.split(|&c| c == 0).nth(1).expect("Invalid C-string in EVTC Actor data")) }
+        unsafe { str::from_utf8_unchecked(self.name.split(|&c| c == 0).nth(1).expect("Invalid C-string in EVTC Agent data")) }
     }
 
     pub fn subgroup(&self) -> &str {
         // All agent and skill names use UTF8 according to deltaconnected
-        unsafe { str::from_utf8_unchecked(self.name.split(|&c| c == 0).nth(2).expect("Invalid C-string in EVTC Actor data")) }
+        unsafe { str::from_utf8_unchecked(self.name.split(|&c| c == 0).nth(2).expect("Invalid C-string in EVTC Agent data")) }
     }
 
     pub fn profession(&self) -> Profession {
@@ -147,8 +147,9 @@ impl Agent {
         }
     }
 
-    /// If the actor is a non-playable-character (NPC) then this method will return
+    /// If the agent is a non-playable-character (NPC) then this method will return
     /// its species id.
+    #[inline]
     pub fn species_id(&self) -> Option<SpeciesId> {
         match (self.is_elite, self.profession & 0xffff0000) {
             (0xffffffff, 0xffff0000) => None,
@@ -158,25 +159,36 @@ impl Agent {
     }
 }
 
+/// Skill id and name.
 #[repr(packed)]
 #[derive(Copy, Clone)]
 pub struct Skill {
-    pub id: u32,
-    name:   [u8; 64],
+    id:   u32,
+    name: [u8; 64],
 }
 
 impl fmt::Debug for Skill {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Skill({}, {})", {self.id}, self.name())
     }
 }
 
 impl Skill {
+    /// The skill id.
+    #[inline]
+    fn id(&self) -> u32 {
+        self.id
+    }
+
+    /// Name of the skill.
     pub fn name(&self) -> &str {
+        // All strings are UTF-8
         unsafe { str::from_utf8_unchecked(self.name.split(|&c| c == 0).next().expect("Invalid C-string in EVTC Skill data")) }
     }
 }
 
+/// Language constants.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub enum Language {
     English = 0,
@@ -186,6 +198,8 @@ pub enum Language {
 }
 
 impl Language {
+    /// Language is stored as agent id ([u64]).
+    #[inline]
     pub fn from_agent_id(id: u64) -> Language {
         match id {
             2 => Language::French,
@@ -196,14 +210,19 @@ impl Language {
     }
 }
 
+/// If the event targets a friendly (green) or foe (red) agent.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IFF {
+    /// Targeting a friendly
     Friend  = 0,
+    /// Targeting an enemy
     Foe     = 1,
+    /// Something is wrong
     Unknown = 2,
 }
 
+/// Result of a hit.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HitResult {
@@ -229,6 +248,7 @@ pub enum HitResult {
     DowningBlow = 9,
 }
 
+/// Skill activation types types.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CombatActivation {
@@ -246,6 +266,7 @@ pub enum CombatActivation {
     Reset      = 5,
 }
 
+/// Actor state changes, and also some non-actor state-changes.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CombatStateChange {
@@ -287,16 +308,17 @@ pub enum CombatStateChange {
     Reward          = 17,
     /// combat event that will appear once per buff per agent on logging start (zero duration, buff==18)
     BuffInitial     = 18,
-    /// src_agent changed, cast float* p = (float*)&dst_agent, access as x/y/z (float[3])
+    /// src_agent changed, cast float* p = (float*)&dst_agent, access as x/y/z (float\[3\])
     Position        = 19,
-    /// src_agent changed, cast float* v = (float*)&dst_agent, access as x/y/z (float[3])
+    /// src_agent changed, cast float* v = (float*)&dst_agent, access as x/y/z (float\[3\])
     Velocity        = 20,
-    /// src_agent changed, cast float* f = (float*)&dst_agent, access as x/y (float[2])
+    /// src_agent changed, cast float* f = (float*)&dst_agent, access as x/y (float\[2\])
     ///
     /// Since 2018-07-18
     Facing          = 21,
 }
 
+/// Buff removals.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CombatBuffRemove {
@@ -310,10 +332,12 @@ pub enum CombatBuffRemove {
     Manual = 3,
 }
 
+/// A combat event, version 1, should be used when [Header::combat_data_version] is
+/// [CombatDataVersion::V1].
 // TODO: Implement all public stuff as a trait
 #[repr(packed)]
 #[derive(Debug, Clone, Copy)]
-pub struct CombatEvent {
+pub struct CombatEventV1 {
     // timegettime() at time of event
     time:              u64,
     // Unique identifier
@@ -359,7 +383,7 @@ pub struct CombatEvent {
     _pad2:             u8,
 }
 
-impl CombatEvent {
+impl CombatEventV1 {
     fn src_agent(&self)         -> AgentId { AgentId::new(self.src_agent) }
     fn dst_agent(&self)         -> AgentId { AgentId::new(self.dst_agent) }
     fn src_instid(&self)        -> InstanceId { InstanceId::new(self.src_instid) }
@@ -439,7 +463,7 @@ impl CombatEvent {
 }
 
 /*
-impl IntoEvent for CombatEvent {
+impl IntoEvent for CombatEventV1 {
     #[inline(always)]
     fn is_meta_event(&self) -> bool {
         match self.is_statechange {
@@ -513,12 +537,12 @@ impl IntoEvent for CombatEvent {
 }
 */
 
-impl<'a> Event for &'a CombatEvent {
-    type MetaEvent = MetaEvent<&'a CombatEvent>;
-    type SourceEvent = SourceEvent<&'a CombatEvent>;
-    type DamageEvent = DamageEvent<&'a CombatEvent>;
-    type TargetEvent = TargetEvent<&'a CombatEvent>;
-    type ActivationEvent = ActivationEvent<&'a CombatEvent>;
+impl<'a> Event for &'a CombatEventV1 {
+    type MetaEvent = MetaEvent<&'a CombatEventV1>;
+    type SourceEvent = SourceEvent<&'a CombatEventV1>;
+    type DamageEvent = DamageEvent<&'a CombatEventV1>;
+    type TargetEvent = TargetEvent<&'a CombatEventV1>;
+    type ActivationEvent = ActivationEvent<&'a CombatEventV1>;
 
     #[inline]
     fn time(&self) -> u64 {
@@ -608,12 +632,12 @@ impl<'a> Event for &'a CombatEvent {
 //
 // MetaEvent start
 
-impl<'a> Event for MetaEvent<&'a CombatEvent> {
-    type MetaEvent = MetaEvent<&'a CombatEvent>;
-    type SourceEvent = SourceEvent<&'a CombatEvent>;
-    type DamageEvent = DamageEvent<&'a CombatEvent>;
-    type TargetEvent = TargetEvent<&'a CombatEvent>;
-    type ActivationEvent = ActivationEvent<&'a CombatEvent>;
+impl<'a> Event for MetaEvent<&'a CombatEventV1> {
+    type MetaEvent = MetaEvent<&'a CombatEventV1>;
+    type SourceEvent = SourceEvent<&'a CombatEventV1>;
+    type DamageEvent = DamageEvent<&'a CombatEventV1>;
+    type TargetEvent = TargetEvent<&'a CombatEventV1>;
+    type ActivationEvent = ActivationEvent<&'a CombatEventV1>;
 
     #[inline]
     fn time(&self) -> u64 {
@@ -661,7 +685,7 @@ impl<'a> Event for MetaEvent<&'a CombatEvent> {
     }
 }
 
-impl<'a> Meta for MetaEvent<&'a CombatEvent> {
+impl<'a> Meta for MetaEvent<&'a CombatEventV1> {
     fn into_enum(&self) -> MetaEventData {
         match self.0.is_statechange {
             CombatStateChange::Language => MetaEventData::Language(Language::from_agent_id(self.0.src_agent)),
@@ -678,12 +702,12 @@ impl<'a> Meta for MetaEvent<&'a CombatEvent> {
 //
 // SourceEvent start
 
-impl<'a> Event for SourceEvent<&'a CombatEvent> {
-    type MetaEvent = MetaEvent<&'a CombatEvent>;
-    type SourceEvent = SourceEvent<&'a CombatEvent>;
-    type DamageEvent = DamageEvent<&'a CombatEvent>;
-    type TargetEvent = TargetEvent<&'a CombatEvent>;
-    type ActivationEvent = ActivationEvent<&'a CombatEvent>;
+impl<'a> Event for SourceEvent<&'a CombatEventV1> {
+    type MetaEvent = MetaEvent<&'a CombatEventV1>;
+    type SourceEvent = SourceEvent<&'a CombatEventV1>;
+    type DamageEvent = DamageEvent<&'a CombatEventV1>;
+    type TargetEvent = TargetEvent<&'a CombatEventV1>;
+    type ActivationEvent = ActivationEvent<&'a CombatEventV1>;
 
     #[inline]
     fn time(&self) -> u64 {
@@ -760,7 +784,7 @@ impl<'a> Event for SourceEvent<&'a CombatEvent> {
 }
 
 
-impl<'a> Source for SourceEvent<&'a CombatEvent> {
+impl<'a> Source for SourceEvent<&'a CombatEventV1> {
     #[inline]
     fn agent(&self) -> AgentId {
         self.0.src_agent()
@@ -829,12 +853,12 @@ impl<'a> Source for SourceEvent<&'a CombatEvent> {
 //
 // TargetEvent start
 
-impl<'a> Event for TargetEvent<&'a CombatEvent> {
-    type MetaEvent = MetaEvent<&'a CombatEvent>;
-    type SourceEvent = TargetEvent<&'a CombatEvent>;
-    type DamageEvent = DamageEvent<&'a CombatEvent>;
-    type TargetEvent = TargetEvent<&'a CombatEvent>;
-    type ActivationEvent = ActivationEvent<&'a CombatEvent>;
+impl<'a> Event for TargetEvent<&'a CombatEventV1> {
+    type MetaEvent = MetaEvent<&'a CombatEventV1>;
+    type SourceEvent = TargetEvent<&'a CombatEventV1>;
+    type DamageEvent = DamageEvent<&'a CombatEventV1>;
+    type TargetEvent = TargetEvent<&'a CombatEventV1>;
+    type ActivationEvent = ActivationEvent<&'a CombatEventV1>;
 
     #[inline]
     fn time(&self) -> u64 {
@@ -911,7 +935,7 @@ impl<'a> Event for TargetEvent<&'a CombatEvent> {
 }
 
 
-impl<'a> Source for TargetEvent<&'a CombatEvent> {
+impl<'a> Source for TargetEvent<&'a CombatEventV1> {
     #[inline]
     fn agent(&self) -> AgentId {
         self.0.src_agent()
@@ -939,7 +963,7 @@ impl<'a> Source for TargetEvent<&'a CombatEvent> {
     }
 }
 
-impl<'a> Target for TargetEvent<&'a CombatEvent> {
+impl<'a> Target for TargetEvent<&'a CombatEventV1> {
     #[inline]
     fn target_agent(&self) -> AgentId {
         AgentId::new(self.0.dst_agent)
@@ -955,12 +979,12 @@ impl<'a> Target for TargetEvent<&'a CombatEvent> {
 //
 // ActivationEvent start
 
-impl<'a> Event for ActivationEvent<&'a CombatEvent> {
-    type MetaEvent = MetaEvent<&'a CombatEvent>;
-    type SourceEvent = ActivationEvent<&'a CombatEvent>;
-    type DamageEvent = DamageEvent<&'a CombatEvent>;
-    type TargetEvent = TargetEvent<&'a CombatEvent>;
-    type ActivationEvent = ActivationEvent<&'a CombatEvent>;
+impl<'a> Event for ActivationEvent<&'a CombatEventV1> {
+    type MetaEvent = MetaEvent<&'a CombatEventV1>;
+    type SourceEvent = ActivationEvent<&'a CombatEventV1>;
+    type DamageEvent = DamageEvent<&'a CombatEventV1>;
+    type TargetEvent = TargetEvent<&'a CombatEventV1>;
+    type ActivationEvent = ActivationEvent<&'a CombatEventV1>;
 
     #[inline]
     fn time(&self) -> u64 {
@@ -1031,7 +1055,7 @@ impl<'a> Event for ActivationEvent<&'a CombatEvent> {
 }
 
 
-impl<'a> Source for ActivationEvent<&'a CombatEvent> {
+impl<'a> Source for ActivationEvent<&'a CombatEventV1> {
     #[inline]
     fn agent(&self) -> AgentId {
         self.0.src_agent()
@@ -1058,7 +1082,7 @@ impl<'a> Source for ActivationEvent<&'a CombatEvent> {
     }
 }
 
-impl<'a> Activation for ActivationEvent<&'a CombatEvent> {
+impl<'a> Activation for ActivationEvent<&'a CombatEventV1> {
     #[inline]
     fn skill(&self) -> u16 {
         self.0.skill_id
@@ -1082,12 +1106,12 @@ impl<'a> Activation for ActivationEvent<&'a CombatEvent> {
 //
 // DamageEvent start
 
-impl<'a> Event for DamageEvent<&'a CombatEvent> {
-    type MetaEvent = MetaEvent<&'a CombatEvent>;
-    type SourceEvent = DamageEvent<&'a CombatEvent>;
-    type DamageEvent = DamageEvent<&'a CombatEvent>;
-    type TargetEvent = DamageEvent<&'a CombatEvent>;
-    type ActivationEvent = ActivationEvent<&'a CombatEvent>;
+impl<'a> Event for DamageEvent<&'a CombatEventV1> {
+    type MetaEvent = MetaEvent<&'a CombatEventV1>;
+    type SourceEvent = DamageEvent<&'a CombatEventV1>;
+    type DamageEvent = DamageEvent<&'a CombatEventV1>;
+    type TargetEvent = DamageEvent<&'a CombatEventV1>;
+    type ActivationEvent = ActivationEvent<&'a CombatEventV1>;
 
     #[inline]
     fn time(&self) -> u64 {
@@ -1160,7 +1184,7 @@ impl<'a> Event for DamageEvent<&'a CombatEvent> {
     }
 }
 
-impl<'a> Source for DamageEvent<&'a CombatEvent> {
+impl<'a> Source for DamageEvent<&'a CombatEventV1> {
     #[inline]
     fn agent(&self) -> AgentId {
         self.0.src_agent()
@@ -1188,7 +1212,7 @@ impl<'a> Source for DamageEvent<&'a CombatEvent> {
     }
 }
 
-impl<'a> Target for DamageEvent<&'a CombatEvent> {
+impl<'a> Target for DamageEvent<&'a CombatEventV1> {
     #[inline]
     fn target_agent(&self) -> AgentId {
         self.0.dst_agent()
@@ -1200,7 +1224,7 @@ impl<'a> Target for DamageEvent<&'a CombatEvent> {
     }
 }
 
-impl<'a> Damage for DamageEvent<&'a CombatEvent> {
+impl<'a> Damage for DamageEvent<&'a CombatEventV1> {
     #[inline]
     fn skill(&self) -> u16 {
         self.0.skill_id
@@ -1251,21 +1275,23 @@ impl<'a> Damage for DamageEvent<&'a CombatEvent> {
 
 // DamageEvent end
 
+/// An owning buffer with copies of all the data.
 #[derive(Debug)]
 pub struct Evtc {
     pub header: Header,
     pub agents: Vec<Agent>,
     pub skills: Vec<Skill>,
-    pub events: Vec<CombatEvent>,
+    pub events: Vec<CombatEventV1>,
 }
 
+/// A buffer borrowing from a slice of raw EVTC-data.
 #[derive(Debug)]
 #[derive(Copy, Clone)]
 pub struct EvtcBuf<'a> {
     pub header: &'a Header,
     pub agents: &'a [Agent],
     pub skills: &'a [Skill],
-    pub events: &'a [CombatEvent],
+    pub events: &'a [CombatEventV1],
 }
 
 fn transmute_single<T: Copy>(buf: &[u8]) -> Option<(&T, &[u8])> {
@@ -1284,12 +1310,14 @@ fn transmute_slice<T: Copy>(buf: &[u8], cnt: usize) -> Option<(&[T], &[u8])> {
     Some((unsafe { slice::from_raw_parts(buf.as_ptr() as *const T, cnt) }, &buf[mem::size_of::<T>() * cnt..]))
 }
 
+/// Transmutes a buffer into an [EvtcBuf].
+// TODO: Handle errors instead of panic
 pub fn transmute(buffer: &[u8]) -> EvtcBuf {
     let (header, buffer)     = transmute_single::<Header>(buffer).expect("EVTC-data is missing header");
     let (agents, buffer)     = transmute_slice(buffer, header.agents as usize).expect("EVTC-data too short, failed to read agents");
     let (num_skills, buffer) = transmute_single::<u32>(buffer).expect("EVTC-data too short, missing skill count");
     let (skills, buffer)     = transmute_slice(buffer, *num_skills as usize).expect("EVTC-data too short, failed to extract skills");
-    let (events, _buffer)    = transmute_slice(buffer, buffer.len() / mem::size_of::<CombatEvent>()).expect("EVTC-data too short, failed to extract events");
+    let (events, _buffer)    = transmute_slice(buffer, buffer.len() / mem::size_of::<CombatEventV1>()).expect("EVTC-data too short, failed to extract events");
 
     EvtcBuf {
         header,

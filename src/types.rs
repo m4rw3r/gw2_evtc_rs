@@ -15,16 +15,7 @@ macro_rules! const_assert {
     };
 }
 
-
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
-pub enum EventType {
-    StateChange,
-    Activation,
-    BuffRemove,
-    BuffApplication,
-    PhysicalHit,
-}
-
+/// An id of an agent present in the encounter
 #[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
 pub struct AgentId(u64);
 
@@ -43,16 +34,21 @@ impl Default for AgentId {
 }
 
 impl AgentId {
+    /// Creates an empty agent id.
+    ///
+    /// 0 is never used.
     #[inline(always)]
     pub fn empty() -> Self {
         AgentId(0)
     }
 
+    /// Wraps a `u64` in the `AgentId` struct.
     pub fn new(id: u64) -> Self {
         AgentId(id)
     }
 }
 
+/// An id representing an instance of an agent present in the encounter.
 #[derive(Clone, Copy, Eq, PartialEq, Debug, Hash, Serialize)]
 pub struct InstanceId(u16);
 
@@ -71,17 +67,20 @@ impl Default for InstanceId {
 }
 
 impl InstanceId {
+    /// Creates an empty instance id.
     #[inline(always)]
     pub fn empty() -> Self {
         InstanceId(0)
     }
 
+    /// Wraps a `u16` in an `InstanceId`.
     #[inline(always)]
     pub fn new(id: u16) -> Self {
         InstanceId(id)
     }
 }
 
+/// An id representing the type of enemy/gadget an agent is.
 #[derive(Clone, Copy, Eq, PartialEq, Debug, Hash, Serialize)]
 pub struct SpeciesId(u16);
 
@@ -100,11 +99,13 @@ impl Default for SpeciesId {
 }
 
 impl SpeciesId {
+    /// Creates a new empty species id.
     #[inline(always)]
     pub fn empty() -> Self {
         SpeciesId(0)
     }
 
+    /// Wraps a `u16` in a `SpeciesId`.
     #[inline(always)]
     pub fn new(id: u16) -> Self {
         SpeciesId(id)
@@ -116,24 +117,27 @@ impl SpeciesId {
 pub enum Profession {
     Gadget,
     NonPlayableCharacter,
+    // Base professions
     Guardian,
     Warrior,
+    Revenant,
     Engineer,
     Ranger,
     Thief,
     Elementalist,
     Mesmer,
     Necromancer,
-    Revenant,
+    // Heart of Thorns professions
     Dragonhunter,
     Berserker,
+    Herald,
     Scrapper,
     Druid,
     Daredevil,
     Tempest,
     Chronomancer,
     Reaper,
-    Herald,
+    // Path of Fire professions
     Soulbeast,
     Weaver,
     Holosmith,
@@ -143,10 +147,13 @@ pub enum Profession {
     Spellbreaker,
     Firebrand,
     Renegade,
+    // Unknown
+    /// Unknown profession, should not happen
     Unknown,
 }
 
 impl Profession {
+    /// Returns the base-profession of any given profession.
     pub fn core_profession(self) -> Profession {
         match self {
             Profession::Dragonhunter => Profession::Guardian,
@@ -178,6 +185,7 @@ impl fmt::Display for Profession {
     }
 }
 
+/// Raid-bosses
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize)]
 pub enum Boss {
     ValeGuardian,
@@ -193,10 +201,12 @@ pub enum Boss {
     Deimos,
     SoullessHorror,
     Dhuum,
+    // TODO: Add golems
     Unknown,
 }
 
 impl Boss {
+    /// Produces a `Boss` id from a `SpeciesId`.
     pub fn from_species_id(species: SpeciesId) -> Boss {
         match species.0 {
             0x3c4e => Boss::ValeGuardian,

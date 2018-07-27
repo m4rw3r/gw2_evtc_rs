@@ -3,6 +3,10 @@ name = "evtc"
 version = "0.1.0"
 authors = ["Martin Wernstål <m4rw3r@gmail.com>"]
 
+[lib]
+name = "evtc"
+path = "src/lib.rs"
+
 [dependencies]
 fnv = "1.0.3"
 clap = "2.32"

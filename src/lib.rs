@@ -3,12 +3,13 @@ extern crate serde;
 extern crate serde_derive;
 extern crate fnv;
 
-pub mod event;
-pub mod statistics;
-
 mod metadata;
 mod types;
 mod iterator;
+
+pub mod event;
+pub mod statistics;
+pub mod boon;
 
 pub use event::*;
 pub use types::*;
@@ -25,7 +26,6 @@ pub use types::Boss;
 pub use types::InstanceId;
 pub use types::SpeciesId;
 pub use types::AgentId;
-pub use types::EventType as ET;
 
 pub use metadata::Agent;
 pub use metadata::Metadata;

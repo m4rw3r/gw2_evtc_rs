@@ -19,7 +19,7 @@ use event::raw::EvtcBuf;
 use event::raw::Language;
 use event::raw::Skill;
 use event::raw::UNLISTED_SKILLS;
-use event::raw::CombatEvent;
+use event::raw::CombatEventV1;
 
 use types::AgentId;
 use types::Boss;
@@ -27,7 +27,7 @@ use types::InstanceId;
 use types::Profession;
 use types::SpeciesId;
 
-/// A game actor present in the encounter
+/// A game agent present in the encounter
 #[derive(Debug, Clone)]
 pub struct Agent {
     // Agent address
@@ -274,7 +274,7 @@ impl<'a> Metadata<'a> {
 
     /// Only returns the events which happened while the boss(es) were present in the fight,
     /// does not contain gaps.
-    pub fn encounter_events(&'a self) -> impl 'a + Iterator<Item=&'a CombatEvent> {
+    pub fn encounter_events(&'a self) -> impl 'a + Iterator<Item=&'a CombatEventV1> {
         // TODO: Move to method
         let (start, end) = self.bosses().fold((u64::MAX, 0), |(start, end), a| (cmp::min(start, a.first_aware()), cmp::max(end, a.last_aware())));
 
