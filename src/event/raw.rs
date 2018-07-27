@@ -55,7 +55,9 @@ pub struct Header {
 impl Header {
     /// The combat data version of the header.
     pub fn combat_data_version(&self) -> CombatDataVersion {
-        if self.version[12] == 1 {
+        // FIXME: This index seems to be wrong:
+        //if self.version[12] == 1 {
+        if self.version[11] == 1 {
             CombatDataVersion::V2
         }
         else {
@@ -177,7 +179,7 @@ impl fmt::Debug for Skill {
 impl Skill {
     /// The skill id.
     #[inline]
-    fn id(&self) -> u32 {
+    pub fn id(&self) -> u32 {
         self.id
     }
 
@@ -388,6 +390,7 @@ impl CombatEventV1 {
     fn dst_agent(&self)         -> AgentId { AgentId::new(self.dst_agent) }
     fn src_instid(&self)        -> InstanceId { InstanceId::new(self.src_instid) }
     fn dst_instid(&self)        -> InstanceId { InstanceId::new(self.dst_instid) }
+    /// Events without a source agent.
     fn is_meta(&self) -> bool {
         match self.is_statechange {
             CombatStateChange::Language |
@@ -543,6 +546,7 @@ impl<'a> Event for &'a CombatEventV1 {
     type DamageEvent = DamageEvent<&'a CombatEventV1>;
     type TargetEvent = TargetEvent<&'a CombatEventV1>;
     type ActivationEvent = ActivationEvent<&'a CombatEventV1>;
+    type BuffEvent = BuffEvent<&'a CombatEventV1>;
 
     #[inline]
     fn time(&self) -> u64 {
@@ -578,6 +582,28 @@ impl<'a> Event for &'a CombatEventV1 {
     }
 
     #[inline]
+    fn into_activation(self) -> Option<Self::ActivationEvent> {
+        if self.is_activation != CombatActivation::None {
+            Some(ActivationEvent(self))
+        }
+        else {
+            None
+        }
+    }
+
+    #[inline]
+    fn into_buff(self) -> Option<Self::BuffEvent> {
+        if self.is_statechange == CombatStateChange::None &&
+           self.is_activation == CombatActivation::None &&
+           self.buff > 0 && self.buff_dmg == 0 {
+            Some(BuffEvent(self))
+        }
+        else {
+            None
+        }
+    }
+
+    #[inline]
     fn from_agent(self, a: AgentId) -> Option<Self::SourceEvent> {
         if ! self.is_meta() && self.src_agent() == a {
             Some(SourceEvent(self))
@@ -599,7 +625,7 @@ impl<'a> Event for &'a CombatEventV1 {
 
     #[inline]
     fn from_agent_or_gadgets(self, a: AgentId, i: InstanceId) -> Option<Self::SourceEvent> {
-        if self.src_agent() == a || self.src_master_instid() == Some(i) {
+        if ! self.is_meta() && (self.src_agent() == a || self.src_master_instid() == Some(i)) {
             Some(SourceEvent(self))
         }
         else {
@@ -619,7 +645,7 @@ impl<'a> Event for &'a CombatEventV1 {
 
     #[inline]
     fn targeting_any_of<I: IntoIterator<Item=AgentId>>(self, agents: I) -> Option<Self::TargetEvent> {
-        if ! self.is_meta() && agents.into_iter().any(|a| a == self.dst_agent()) {
+        if self.is_statechange == CombatStateChange::None && agents.into_iter().any(|a| a == self.dst_agent()) {
             Some(TargetEvent(self))
         }
         else {
@@ -638,6 +664,7 @@ impl<'a> Event for MetaEvent<&'a CombatEventV1> {
     type DamageEvent = DamageEvent<&'a CombatEventV1>;
     type TargetEvent = TargetEvent<&'a CombatEventV1>;
     type ActivationEvent = ActivationEvent<&'a CombatEventV1>;
+    type BuffEvent = BuffEvent<&'a CombatEventV1>;
 
     #[inline]
     fn time(&self) -> u64 {
@@ -656,6 +683,16 @@ impl<'a> Event for MetaEvent<&'a CombatEventV1> {
 
     #[inline]
     fn into_damage(self) -> Option<Self::DamageEvent> {
+        None
+    }
+
+    #[inline]
+    fn into_activation(self) -> Option<Self::ActivationEvent> {
+        None
+    }
+
+    #[inline]
+    fn into_buff(self) -> Option<Self::BuffEvent> {
         None
     }
 
@@ -708,6 +745,7 @@ impl<'a> Event for SourceEvent<&'a CombatEventV1> {
     type DamageEvent = DamageEvent<&'a CombatEventV1>;
     type TargetEvent = TargetEvent<&'a CombatEventV1>;
     type ActivationEvent = ActivationEvent<&'a CombatEventV1>;
+    type BuffEvent = BuffEvent<&'a CombatEventV1>;
 
     #[inline]
     fn time(&self) -> u64 {
@@ -729,6 +767,28 @@ impl<'a> Event for SourceEvent<&'a CombatEventV1> {
         match (self.0.is_statechange, self.0.is_activation, self.0.is_buffremove, self.0.buff > 0 && self.0.buff_dmg == 0) {
             (CombatStateChange::None, CombatActivation::None, CombatBuffRemove::None, false) => Some(DamageEvent(self.0)),
             _ => None,
+        }
+    }
+
+    #[inline]
+    fn into_activation(self) -> Option<Self::ActivationEvent> {
+        if self.0.is_activation == CombatActivation::None {
+            None
+        }
+        else {
+            Some(ActivationEvent(self.0))
+        }
+    }
+
+    #[inline]
+    fn into_buff(self) -> Option<Self::BuffEvent> {
+        if self.0.is_statechange == CombatStateChange::None &&
+           self.0.is_activation == CombatActivation::None &&
+           self.0.buff > 0 && self.0.buff_dmg == 0 {
+            Some(BuffEvent(self.0))
+        }
+        else {
+            None
         }
     }
 
@@ -774,6 +834,7 @@ impl<'a> Event for SourceEvent<&'a CombatEventV1> {
 
     #[inline]
     fn targeting_any_of<I: IntoIterator<Item=AgentId>>(self, agents: I) -> Option<Self::TargetEvent> {
+        // TODO: Fix potential overlap with some state-changes
         if agents.into_iter().any(|a| a == self.0.dst_agent()) {
             Some(TargetEvent(self.0))
         }
@@ -782,7 +843,6 @@ impl<'a> Event for SourceEvent<&'a CombatEventV1> {
         }
     }
 }
-
 
 impl<'a> Source for SourceEvent<&'a CombatEventV1> {
     #[inline]
@@ -837,16 +897,6 @@ impl<'a> Source for SourceEvent<&'a CombatEventV1> {
             _ => None
         }
     }
-
-    #[inline]
-    fn into_activation(self) -> Option<Self::ActivationEvent> {
-        if self.0.is_activation == CombatActivation::None {
-            None
-        }
-        else {
-            Some(ActivationEvent(self.0))
-        }
-    }
 }
 
 // SourceEvent end
@@ -859,6 +909,7 @@ impl<'a> Event for TargetEvent<&'a CombatEventV1> {
     type DamageEvent = DamageEvent<&'a CombatEventV1>;
     type TargetEvent = TargetEvent<&'a CombatEventV1>;
     type ActivationEvent = ActivationEvent<&'a CombatEventV1>;
+    type BuffEvent = BuffEvent<&'a CombatEventV1>;
 
     #[inline]
     fn time(&self) -> u64 {
@@ -877,9 +928,36 @@ impl<'a> Event for TargetEvent<&'a CombatEventV1> {
 
     #[inline]
     fn into_damage(self) -> Option<Self::DamageEvent> {
-        match (self.0.is_statechange, self.0.is_activation, self.0.is_buffremove, self.0.buff > 0 && self.0.buff_dmg == 0) {
-            (CombatStateChange::None, CombatActivation::None, CombatBuffRemove::None, false) => Some(DamageEvent(self.0)),
-            _ => None,
+        // Target events should not have any statechanges or activations
+        debug_assert!(self.0.is_statechange == CombatStateChange::None);
+        debug_assert!(self.0.is_activation == CombatActivation::None);
+
+        if self.0.is_buffremove == CombatBuffRemove::None &&
+            (self.0.buff == 0 || self.0.buff_dmg != 0) {
+            Some(DamageEvent(self.0))
+        }
+        else {
+            None
+        }
+    }
+
+    #[inline]
+    fn into_activation(self)   -> Option<Self::ActivationEvent> {
+        // Target-events can't be activations
+        None
+    }
+
+    #[inline]
+    fn into_buff(self) -> Option<Self::BuffEvent> {
+        // Target events should not have any statechanges or activations
+        debug_assert!(self.0.is_statechange == CombatStateChange::None);
+        debug_assert!(self.0.is_activation == CombatActivation::None);
+
+        if self.0.buff > 0 && self.0.buff_dmg == 0 {
+            Some(BuffEvent(self.0))
+        }
+        else {
+            None
         }
     }
 
@@ -955,12 +1033,6 @@ impl<'a> Source for TargetEvent<&'a CombatEventV1> {
     fn state_change(&self) -> Option<StateChange> {
         None
     }
-
-    #[inline]
-    fn into_activation(self)   -> Option<Self::ActivationEvent> {
-        // Target-events can't be activations
-        None
-    }
 }
 
 impl<'a> Target for TargetEvent<&'a CombatEventV1> {
@@ -985,6 +1057,7 @@ impl<'a> Event for ActivationEvent<&'a CombatEventV1> {
     type DamageEvent = DamageEvent<&'a CombatEventV1>;
     type TargetEvent = TargetEvent<&'a CombatEventV1>;
     type ActivationEvent = ActivationEvent<&'a CombatEventV1>;
+    type BuffEvent = BuffEvent<&'a CombatEventV1>;
 
     #[inline]
     fn time(&self) -> u64 {
@@ -1004,6 +1077,16 @@ impl<'a> Event for ActivationEvent<&'a CombatEventV1> {
     #[inline]
     fn into_damage(self) -> Option<Self::DamageEvent> {
         // Skill activations can't do damage
+        None
+    }
+
+    #[inline]
+    fn into_activation(self)   -> Option<Self::ActivationEvent> {
+        Some(self)
+    }
+
+    #[inline]
+    fn into_buff(self) -> Option<Self::BuffEvent> {
         None
     }
 
@@ -1075,11 +1158,6 @@ impl<'a> Source for ActivationEvent<&'a CombatEventV1> {
     fn state_change(&self) -> Option<StateChange> {
         None
     }
-
-    #[inline]
-    fn into_activation(self)   -> Option<Self::ActivationEvent> {
-        Some(self)
-    }
 }
 
 impl<'a> Activation for ActivationEvent<&'a CombatEventV1> {
@@ -1112,6 +1190,7 @@ impl<'a> Event for DamageEvent<&'a CombatEventV1> {
     type DamageEvent = DamageEvent<&'a CombatEventV1>;
     type TargetEvent = DamageEvent<&'a CombatEventV1>;
     type ActivationEvent = ActivationEvent<&'a CombatEventV1>;
+    type BuffEvent = BuffEvent<&'a CombatEventV1>;
 
     #[inline]
     fn time(&self) -> u64 {
@@ -1131,6 +1210,17 @@ impl<'a> Event for DamageEvent<&'a CombatEventV1> {
     #[inline]
     fn into_damage(self) -> Option<Self::DamageEvent> {
         Some(self)
+    }
+
+    #[inline]
+    fn into_activation(self)   -> Option<Self::ActivationEvent> {
+        // Target-events can't be activations
+        None
+    }
+
+    #[inline]
+    fn into_buff(self) -> Option<Self::BuffEvent> {
+        None
     }
 
     #[inline]
@@ -1204,12 +1294,6 @@ impl<'a> Source for DamageEvent<&'a CombatEventV1> {
     fn state_change(&self) -> Option<StateChange> {
         None
     }
-
-    #[inline]
-    fn into_activation(self)   -> Option<Self::ActivationEvent> {
-        // Target-events can't be activations
-        None
-    }
 }
 
 impl<'a> Target for DamageEvent<&'a CombatEventV1> {
@@ -1274,6 +1358,156 @@ impl<'a> Damage for DamageEvent<&'a CombatEventV1> {
 }
 
 // DamageEvent end
+//
+// BuffEvent start
+
+impl<'a> Event for BuffEvent<&'a CombatEventV1> {
+    type MetaEvent = MetaEvent<&'a CombatEventV1>;
+    type SourceEvent = BuffEvent<&'a CombatEventV1>;
+    type DamageEvent = DamageEvent<&'a CombatEventV1>;
+    type TargetEvent = BuffEvent<&'a CombatEventV1>;
+    type ActivationEvent = ActivationEvent<&'a CombatEventV1>;
+    type BuffEvent = BuffEvent<&'a CombatEventV1>;
+
+    #[inline]
+    fn time(&self) -> u64 {
+        self.0.time
+    }
+
+    #[inline]
+    fn into_meta(self) -> Option<Self::MetaEvent> {
+        None
+    }
+
+    #[inline]
+    fn into_source(self) -> Option<Self::SourceEvent> {
+        Some(self)
+    }
+
+    #[inline]
+    fn into_damage(self) -> Option<Self::DamageEvent> {
+        None
+    }
+
+    #[inline]
+    fn into_activation(self)   -> Option<Self::ActivationEvent> {
+        // Target-events can't be activations
+        None
+    }
+
+    #[inline]
+    fn into_buff(self) -> Option<Self::BuffEvent> {
+        Some(self)
+    }
+
+    #[inline]
+    fn from_agent(self, a: AgentId) -> Option<Self::SourceEvent> {
+        if self.0.src_agent() == a {
+            Some(self)
+        }
+        else {
+            None
+        }
+    }
+
+    #[inline]
+    fn from_gadgets(self, master: InstanceId) -> Option<Self::SourceEvent> {
+        if self.0.src_master_instid() == Some(master) {
+            Some(self)
+        }
+        else {
+            None
+        }
+    }
+
+    #[inline]
+    fn from_agent_or_gadgets(self, a: AgentId, i: InstanceId) -> Option<Self::SourceEvent> {
+        if self.0.src_agent() == a || self.0.src_master_instid() == Some(i) {
+            Some(self)
+        }
+        else {
+            None
+        }
+    }
+
+    #[inline]
+    fn from_any_of<I: IntoIterator<Item=AgentId>>(self, agents: I) -> Option<Self::SourceEvent> {
+        if agents.into_iter().any(|a| a == self.0.src_agent()) {
+            Some(self)
+        }
+        else {
+            None
+        }
+    }
+
+    #[inline]
+    fn targeting_any_of<I: IntoIterator<Item=AgentId>>(self, agents: I) -> Option<Self::TargetEvent> {
+        if agents.into_iter().any(|a| a == self.0.dst_agent()) {
+            Some(self)
+        }
+        else {
+            None
+        }
+    }
+}
+
+impl<'a> Source for BuffEvent<&'a CombatEventV1> {
+    #[inline]
+    fn agent(&self) -> AgentId {
+        self.0.src_agent()
+    }
+
+    #[inline]
+    fn instance(&self) -> InstanceId {
+        self.0.src_instid()
+    }
+
+    #[inline]
+    fn master_instance(&self) -> Option<InstanceId> {
+        self.0.src_master_instid()
+    }
+
+    #[inline]
+    fn state_change(&self) -> Option<StateChange> {
+        None
+    }
+}
+
+impl<'a> Target for BuffEvent<&'a CombatEventV1> {
+    #[inline]
+    fn target_agent(&self) -> AgentId {
+        self.0.dst_agent()
+    }
+
+    #[inline]
+    fn target_instance(&self) -> InstanceId {
+        self.0.dst_instid()
+    }
+}
+
+impl<'a> Buff for BuffEvent<&'a CombatEventV1> {
+    #[inline]
+    fn skill(&self) -> u16 {
+        self.0.skill_id
+    }
+
+    #[inline]
+    fn duration(&self) -> i32 {
+        self.0.value
+    }
+
+    #[inline]
+    fn overstack(&self) -> i32 {
+        self.0.overstack as i32
+    }
+
+    #[inline]
+    fn removal(&self) -> CombatBuffRemove {
+        self.0.is_buffremove
+    }
+}
+
+// BuffEvent end
 
 /// An owning buffer with copies of all the data.
 #[derive(Debug)]

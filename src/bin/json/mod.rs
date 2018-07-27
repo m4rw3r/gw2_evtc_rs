@@ -18,7 +18,6 @@ use evtc::statistics::Abilities;
 use evtc::statistics::ActivationLog;
 use evtc::statistics::Hits;
 use evtc::statistics::Sink;
-use evtc::Source;
 use evtc::Damage;
 
 use serde_json;
@@ -154,7 +153,7 @@ pub fn parse_data<W: Write>(buffer: &[u8], logname: String, writer: W) -> Result
         }).collect(),
         activation_log: meta.encounter_events()
                             .from_agent_or_gadgets(a)
-                            .filter_map(Source::into_activation)
+                            .filter_map(Event::into_activation)
                             .collect(),
         series:    TimeSeries::parse_agent(&meta, a),
     }).collect();

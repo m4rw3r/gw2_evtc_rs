@@ -3,24 +3,37 @@ use types::InstanceId;
 
 pub use self::raw::Language;
 
+pub use self::raw::CombatBuffRemove as BuffRemoval;
+
 pub mod raw;
 
 /// Basic event type, contains methods for accessing data common to all events and to refine the
 /// event into a more specific type.
 pub trait Event: Clone {
-    type MetaEvent:   Meta;
+    /// Meta event type, usually a [MetaEvent] wrapper around the type implementing [Event].
+    type MetaEvent: Meta;
+    /// Source event type, usually a [SourceEvent] wrapper around the type implementing [Event].
     type SourceEvent: Source;
+    /// Target event type, usually a [TargetEvent] wrapper around the type implementing [Event].
     type TargetEvent: Target;
+    /// Activation event type, usually a [ActivationEvent] wrapper around the type implementing [Event].
     type ActivationEvent: Activation;
+    /// Damage event type, usually a [DamageEvent] wrapper around the type implementing [Event].
     type DamageEvent: Damage;
+    /// Buff event type, usually a [BuffEvent] wrapper around the type implementing [Event].
+    type BuffEvent: Buff;
 
     /// Timestamp of the event in milliseconds, relative time of PoV.
     fn time(&self) -> u64;
     fn into_source(self) -> Option<Self::SourceEvent>;
     fn into_meta(self) -> Option<Self::MetaEvent>;
     fn into_damage(self) -> Option<Self::DamageEvent>;
+    fn into_activation(self) -> Option<Self::ActivationEvent>;
+    fn into_buff(self) -> Option<Self::BuffEvent>;
     fn from_agent(self, AgentId) -> Option<Self::SourceEvent>;
+    // TODO: Are InstanceIds reused?
     fn from_gadgets(self, InstanceId) -> Option<Self::SourceEvent>;
+    // TODO: Are InstanceIds reused?
     fn from_agent_or_gadgets(self, AgentId, InstanceId) -> Option<Self::SourceEvent>;
     fn from_any_of<I: IntoIterator<Item=AgentId>>(self, I) -> Option<Self::SourceEvent>;
     fn targeting_any_of<I: IntoIterator<Item=AgentId>>(self, I) -> Option<Self::TargetEvent>;
@@ -37,8 +50,6 @@ pub trait Source: Event<SourceEvent=Self> {
     fn instance(&self) -> InstanceId;
     fn master_instance(&self) -> Option<InstanceId>;
     fn state_change(&self) -> Option<StateChange>;
-    fn into_activation(self) -> Option<Self::ActivationEvent>;
-    // TODO: Buff event
 }
 
 /// Trait for skill-casts, where agents activate skills.
@@ -54,8 +65,16 @@ pub trait Target: Source<SourceEvent=Self, TargetEvent=Self> {
 }
 
 /// Trait for events which apply a buff/boon/debuff/condition to a target.
-pub trait Buff: Target {
+pub trait Buff: Target<SourceEvent=Self, TargetEvent=Self, BuffEvent=Self> {
+    // TODO: Move skill to Target?
+    fn skill(&self) -> u16;
+    fn removal(&self) -> BuffRemoval;
+    fn duration(&self) -> i32;
+    fn overstack(&self) -> i32;
 
+    fn is_remove(&self) -> bool {
+        self.removal() != BuffRemoval::None
+    }
 }
 
 /// Trait for events which damage a target.

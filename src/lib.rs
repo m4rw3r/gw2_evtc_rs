@@ -9,7 +9,7 @@ mod iterator;
 
 pub mod event;
 pub mod statistics;
-pub mod boon;
+pub mod buff;
 
 pub use event::*;
 pub use types::*;
@@ -30,7 +30,6 @@ pub use types::AgentId;
 pub use metadata::Agent;
 pub use metadata::Metadata;
 pub use metadata::SkillList;
-pub use event::*;
 
 #[derive(Debug, Clone, Serialize)]
 struct TimeEntry {

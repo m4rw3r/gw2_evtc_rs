@@ -336,8 +336,8 @@ impl<'a> Serialize for SkillList<'a> {
 
         let mut map = serializer.serialize_map(Some(self.skills.len()))?;
 
-        for s in self.skills.iter().filter(|s| s.id != 0) {
-            map.serialize_entry(&{s.id}, s.name())?;
+        for s in self.skills.iter().filter(|s| s.id() != 0) {
+            map.serialize_entry(&s.id(), s.name())?;
         }
 
         map.end()
