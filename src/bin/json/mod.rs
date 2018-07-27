@@ -8,10 +8,9 @@ use evtc::HitType;
 use evtc::Metadata;
 use evtc::SkillList;
 use evtc::SpeciesId;
-use evtc::TargetEvent;
 use evtc::TimeSeries;
-use evtc::EventType;
 use evtc::Event;
+use evtc::EventIteratorExt;
 
 use evtc::raw::Language;
 
@@ -19,7 +18,6 @@ use evtc::statistics::Abilities;
 use evtc::statistics::ActivationLog;
 use evtc::statistics::Hits;
 use evtc::statistics::Sink;
-use evtc::Target;
 use evtc::Source;
 use evtc::Damage;
 
@@ -132,18 +130,17 @@ pub fn parse_data<W: Write>(buffer: &[u8], logname: String, writer: W) -> Result
     let meta = Metadata::new(&evtc);
 
     let bosses: Vec<_> = meta.bosses().collect();
-    let boss_ids: Vec<_> = bosses.iter().map(|b| b.id()).collect();
 
     let player_summaries = meta.agents().iter().filter(|a| a.is_player_character()).map(|a| PlayerSummary {
         agent: a,
         hit_stats:          meta.encounter_events()
                                 .filter_map(Event::into_damage)
-                                .filter_map(|e| e.from_agent_or_gadgets(a.id(), a.instance_id()))
+                                .from_agent_or_gadgets(a)
                                 .collect(),
         boss_hit_stats:     meta.encounter_events()
                                 .filter_map(Event::into_damage)
-                                .filter_map(|e| e.from_agent_or_gadgets(a.id(), a.instance_id()))
-                                .filter_map(|e| e.targeting_any_of(boss_ids.iter().cloned()))
+                                .from_agent_or_gadgets(a)
+                                .targeting_any_of(&bosses[..])
                                 .collect(),
         agents:             (&[vec![a]]).iter()
                                         .chain(group_agents_by_species(meta.agents_for_master(a)).values())
@@ -151,12 +148,12 @@ pub fn parse_data<W: Write>(buffer: &[u8], logname: String, writer: W) -> Result
             agent: minions[0],
             stats: meta.encounter_events()
                        .filter_map(Event::into_damage)
-                       .filter_map(|e| e.from_any_of(minions.iter().map(|m| m.id())))
-                       .filter_map(|e| e.targeting_any_of(boss_ids.iter().cloned()))
+                       .from_any_of(&minions[..])
+                       .targeting_any_of(&bosses[..])
                        .collect(),
         }).collect(),
         activation_log: meta.encounter_events()
-                            .filter_map(|e| e.from_agent_or_gadgets(a.id(), a.instance_id()))
+                            .from_agent_or_gadgets(a)
                             .filter_map(Source::into_activation)
                             .collect(),
         series:    TimeSeries::parse_agent(&meta, a),

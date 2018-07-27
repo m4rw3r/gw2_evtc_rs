@@ -1,7 +1,7 @@
-use TargetEvent;
-use HitType;
-
-use event::*;
+use event::Activation;
+use event::CastType;
+use event::Damage;
+use event::HitType;
 
 use fnv::FnvHashMap;
 

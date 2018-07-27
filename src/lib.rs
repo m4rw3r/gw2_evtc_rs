@@ -5,17 +5,13 @@ extern crate fnv;
 
 pub mod event;
 pub mod statistics;
-//pub mod iterator;
 
 mod metadata;
 mod types;
+mod iterator;
 
-//pub use iterator::EventIteratorExt;
 pub use event::*;
 pub use types::*;
-
-//pub mod statistics;
-//pub mod iterator;
 
 use serde::ser::Serialize;
 use serde::ser::Serializer;
@@ -23,7 +19,7 @@ use serde::ser::Serializer;
 use std::i64;
 use std::u64;
 
-//pub use iterator::EventIteratorExt;
+pub use iterator::EventIteratorExt;
 pub use types::Profession;
 pub use types::Boss;
 pub use types::InstanceId;
@@ -35,19 +31,6 @@ pub use metadata::Agent;
 pub use metadata::Metadata;
 pub use metadata::SkillList;
 pub use event::*;
-
-/*
-pub trait IntoEvent {
-    #[inline]
-    fn is_meta_event(&self) -> bool;
-
-    #[inline]
-    fn to_meta_event(&self) -> Option<MetaEvent>;
-
-    #[inline]
-    fn to_event(&self) -> Option<Event>;
-}
-*/
 
 #[derive(Debug, Clone, Serialize)]
 struct TimeEntry {
@@ -182,10 +165,6 @@ impl Serialize for TimeSeries {
 
 #[derive(Debug, Copy, Clone)]
 pub struct Quickness([u64; 5]);
-
-//impl specs::Component for Quickness {
-//    type Storage = specs::VecStorage<Self>;
-//}
 
 impl Default for Quickness {
     fn default() -> Self {

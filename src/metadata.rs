@@ -1,8 +1,8 @@
-use Event;
-use MetaEvent;
-use TargetEvent;
-
-use event::*;
+use event::Event;
+use event::Source;
+use event::Meta;
+use event::MetaEventData;
+use event::StateChange;
 
 use fnv::FnvHashMap;
 
