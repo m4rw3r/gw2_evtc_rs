@@ -93,18 +93,18 @@ impl<'a> AgentStatistics<'a> {
 }
 
 buff_table!(Buffs (
-    quickness     1187 Duration  Queue    5,
-    fury           725 Duration  Queue    5,
-    alacrity     30328 Duration  Queue    5,
-    protection     717 Duration  Queue    5,
-    regeneration   718 Duration  Queue    5,
-    vigor          726 Duration  Queue    5,
     aegis          743 Duration  Queue    5,
+    alacrity     30328 Duration  Queue    5,
+    fury           725 Duration  Queue    5,
+    might          740 Intensity Replace 25,
+    protection     717 Duration  Queue    5,
+    quickness     1187 Duration  Queue    5,
+    regeneration   718 Duration  Queue    5,
+    resistance   26980 Duration  Queue    5,
+    retaliation    873 Duration  Queue    5,
     stability     1122 Intensity Queue   25,
     swiftness      719 Duration  Queue    5,
-    retaliation    873 Duration  Queue    5,
-    resistance   26980 Duration  Queue    5,
-    might          740 Intensity Replace 25
+    vigor          726 Duration  Queue    5,
 ));
 
 #[derive(Debug, Clone, Serialize)]
@@ -236,7 +236,7 @@ fn mk_boon_filter<E: Buff>(a: AgentId) -> impl Fn(E) -> Option<E> {
     }
 }
 
-pub fn parse_data<W: Write>(buffer: &[u8], logname: String, writer: W) -> Result<(), JSONError> {
+pub fn parse_data<W: Write>(buffer: &[u8], logname: String, pretty:bool, writer: W) -> Result<(), JSONError> {
     use evtc::Buff;
     let evtc = raw::transmute(buffer);
     let meta = Metadata::new(&evtc);
@@ -351,5 +351,10 @@ panic!("FOO");
         skills:    meta.skill_list(),
     };
 
-    serde_json::to_writer(writer, &data)
+    if pretty {
+        serde_json::to_writer_pretty(writer, &data)
+    }
+    else {
+        serde_json::to_writer(writer, &data)
+    }
 }

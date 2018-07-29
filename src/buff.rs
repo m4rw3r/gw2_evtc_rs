@@ -283,6 +283,7 @@ macro_rules! buff_table {
     (
         $struct:ident (
             $( $buff:ident $id:tt $kind:ident $type:ident $stacks:tt ),+
+            $(,)*
         )
     ) => {
 #[derive(Debug, Clone, Serialize)]

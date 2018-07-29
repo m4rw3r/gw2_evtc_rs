@@ -40,10 +40,13 @@ fn main() {
         .arg(Arg::with_name("json")
             .short("j")
             .help("If to output raw json instead of HTML"))
+        .arg(Arg::with_name("pretty")
+            .short("p")
+            .help("If to pretty-print the JSON"))
         .get_matches();
 
-    let is_json = matches.occurrences_of("json") > 0;
-    let name    = matches.value_of("INPUT").unwrap().to_string();
+    let is_json  = matches.occurrences_of("json") > 0;
+    let name     = matches.value_of("INPUT").unwrap().to_string();
     let out_name = matches.value_of("OUTPUT")
         .map(|s| Cow::Owned(s.to_string()))
         .unwrap_or_else(|| Regex::new("\\.evtc(?:\\.zip)?$").unwrap().replace(&name, if is_json { ".json" } else { ".html" }))
@@ -77,12 +80,12 @@ evtc_rs("[..]).unwrap();
 
         file.read_to_end(&mut buffer).expect("Failed to read first file in arcive");
 
-        json::parse_data(&buffer[..], name, &mut out).unwrap();
+        json::parse_data(&buffer[..], name, matches.occurrences_of("pretty") > 0, &mut out).unwrap();
     }
     else {
         let mmap = unsafe { memmap::Mmap::map(&file).expect("Failed to mmap() file") };
 
-        json::parse_data(&mmap[..], name, &mut out).unwrap();
+        json::parse_data(&mmap[..], name, matches.occurrences_of("pretty") > 0, &mut out).unwrap();
     }
 
     if ! is_json {
