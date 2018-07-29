@@ -16,10 +16,10 @@ use event::StateChange;
 use event::Target;
 use event::TargetEvent;
 
-use types::AgentId;
-use types::InstanceId;
-use types::Profession;
-use types::SpeciesId;
+use AgentId;
+use InstanceId;
+use Profession;
+use SpeciesId;
 
 use std::fmt;
 use std::mem;
@@ -644,6 +644,16 @@ impl<'a> Event for &'a CombatEventV1 {
     }
 
     #[inline]
+    fn targeting_agent(self, agent: AgentId) -> Option<Self::TargetEvent> {
+        if self.is_statechange == CombatStateChange::None && agent == self.dst_agent() {
+            Some(TargetEvent(self))
+        }
+        else {
+            None
+        }
+    }
+
+    #[inline]
     fn targeting_any_of<I: IntoIterator<Item=AgentId>>(self, agents: I) -> Option<Self::TargetEvent> {
         if self.is_statechange == CombatStateChange::None && agents.into_iter().any(|a| a == self.dst_agent()) {
             Some(TargetEvent(self))
@@ -713,6 +723,11 @@ impl<'a> Event for MetaEvent<&'a CombatEventV1> {
 
     #[inline]
     fn from_agent_or_gadgets(self, _: AgentId, _: InstanceId) -> Option<Self::SourceEvent> {
+        None
+    }
+
+    #[inline]
+    fn targeting_agent(self, _: AgentId) -> Option<Self::TargetEvent> {
         None
     }
 
@@ -826,6 +841,17 @@ impl<'a> Event for SourceEvent<&'a CombatEventV1> {
     fn from_any_of<I: IntoIterator<Item=AgentId>>(self, agents: I) -> Option<Self::SourceEvent> {
         if agents.into_iter().any(|a| a == self.0.src_agent()) {
             Some(SourceEvent(self.0))
+        }
+        else {
+            None
+        }
+    }
+
+    #[inline]
+    fn targeting_agent(self, agent: AgentId) -> Option<Self::TargetEvent> {
+        // TODO: Fix potential overlap with some state-changes
+        if agent == self.0.dst_agent() {
+            Some(TargetEvent(self.0))
         }
         else {
             None
@@ -1002,6 +1028,16 @@ impl<'a> Event for TargetEvent<&'a CombatEventV1> {
     }
 
     #[inline]
+    fn targeting_agent(self, agent: AgentId) -> Option<Self::TargetEvent> {
+        if agent == self.0.dst_agent() {
+            Some(TargetEvent(self.0))
+        }
+        else {
+            None
+        }
+    }
+
+    #[inline]
     fn targeting_any_of<I: IntoIterator<Item=AgentId>>(self, agents: I) -> Option<Self::TargetEvent> {
         if agents.into_iter().any(|a| a == self.0.dst_agent()) {
             Some(self)
@@ -1131,6 +1167,12 @@ impl<'a> Event for ActivationEvent<&'a CombatEventV1> {
     }
 
     #[inline]
+    fn targeting_agent(self, _: AgentId) -> Option<Self::TargetEvent> {
+        // Activation events do not have a target
+        None
+    }
+
+    #[inline]
     fn targeting_any_of<I: IntoIterator<Item=AgentId>>(self, _: I) -> Option<Self::TargetEvent> {
         // Activation events do not have a target
         None
@@ -1256,6 +1298,16 @@ impl<'a> Event for DamageEvent<&'a CombatEventV1> {
     #[inline]
     fn from_any_of<I: IntoIterator<Item=AgentId>>(self, agents: I) -> Option<Self::SourceEvent> {
         if agents.into_iter().any(|a| a == self.0.src_agent()) {
+            Some(self)
+        }
+        else {
+            None
+        }
+    }
+
+    #[inline]
+    fn targeting_agent(self, agent: AgentId) -> Option<Self::TargetEvent> {
+        if agent == self.0.dst_agent() {
             Some(self)
         }
         else {
@@ -1441,6 +1493,16 @@ impl<'a> Event for BuffEvent<&'a CombatEventV1> {
     }
 
     #[inline]
+    fn targeting_agent(self, agent: AgentId) -> Option<Self::TargetEvent> {
+        if agent == self.0.dst_agent() {
+            Some(self)
+        }
+        else {
+            None
+        }
+    }
+
+    #[inline]
     fn targeting_any_of<I: IntoIterator<Item=AgentId>>(self, agents: I) -> Option<Self::TargetEvent> {
         if agents.into_iter().any(|a| a == self.0.dst_agent()) {
             Some(self)
@@ -1492,13 +1554,13 @@ impl<'a> Buff for BuffEvent<&'a CombatEventV1> {
     }
 
     #[inline]
-    fn duration(&self) -> i32 {
-        self.0.value
+    fn duration(&self) -> u32 {
+        self.0.value as u32
     }
 
     #[inline]
-    fn overstack(&self) -> i32 {
-        self.0.overstack as i32
+    fn overstack(&self) -> u32 {
+        self.0.overstack as u32
     }
 
     #[inline]

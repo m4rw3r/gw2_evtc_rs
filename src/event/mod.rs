@@ -1,5 +1,12 @@
-use types::AgentId;
-use types::InstanceId;
+//!
+//! ## Buff events
+//!
+//! In buff events the source agent (returned from [Source::agent], [Source::instance] and filtered
+//! by [Event::from_agent], [Event::targeting_agent] and similar filters) is the agent being
+//! dispelled if it is a buff removal. Always cast into a [Buff] first using [Event::into_buff],
+//! then check using [Buff::is_remove] to decide which filter/agent to use.
+use AgentId;
+use InstanceId;
 
 pub use self::raw::Language;
 
@@ -36,6 +43,7 @@ pub trait Event: Clone {
     // TODO: Are InstanceIds reused?
     fn from_agent_or_gadgets(self, AgentId, InstanceId) -> Option<Self::SourceEvent>;
     fn from_any_of<I: IntoIterator<Item=AgentId>>(self, I) -> Option<Self::SourceEvent>;
+    fn targeting_agent(self, AgentId) -> Option<Self::TargetEvent>;
     fn targeting_any_of<I: IntoIterator<Item=AgentId>>(self, I) -> Option<Self::TargetEvent>;
 }
 
@@ -46,6 +54,7 @@ pub trait Meta: Event<MetaEvent=Self> {
 
 /// Trait for events which are tied to a source agent.
 pub trait Source: Event<SourceEvent=Self> {
+    /// The source of the event.
     fn agent(&self) -> AgentId;
     fn instance(&self) -> InstanceId;
     fn master_instance(&self) -> Option<InstanceId>;
@@ -69,8 +78,8 @@ pub trait Buff: Target<SourceEvent=Self, TargetEvent=Self, BuffEvent=Self> {
     // TODO: Move skill to Target?
     fn skill(&self) -> u16;
     fn removal(&self) -> BuffRemoval;
-    fn duration(&self) -> i32;
-    fn overstack(&self) -> i32;
+    fn duration(&self) -> u32;
+    fn overstack(&self) -> u32;
 
     fn is_remove(&self) -> bool {
         self.removal() != BuffRemoval::None

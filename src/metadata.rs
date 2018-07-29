@@ -21,11 +21,11 @@ use event::raw::Skill;
 use event::raw::UNLISTED_SKILLS;
 use event::raw::CombatEventV1;
 
-use types::AgentId;
-use types::Boss;
-use types::InstanceId;
-use types::Profession;
-use types::SpeciesId;
+use AgentId;
+use Boss;
+use InstanceId;
+use Profession;
+use SpeciesId;
 
 /// A game agent present in the encounter
 #[derive(Debug, Clone)]
