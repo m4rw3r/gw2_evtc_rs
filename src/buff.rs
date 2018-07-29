@@ -28,7 +28,7 @@ pub trait StackType {
     fn can_replace(usize, u32, u32) -> bool;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct Queue;
 
 impl StackType for Queue {
@@ -38,7 +38,7 @@ impl StackType for Queue {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct Replace;
 
 impl StackType for Replace {
@@ -60,10 +60,10 @@ impl StackType for Replace {
 ///
 /// This implies that the current stack is not replaced, even if it is smaller than the
 /// new stack.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Duration<T: StackType, U: Sized>(T, U);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Intensity<T: StackType, U: Sized>(T, U);
 
 macro_rules! impl_intensity {
@@ -183,11 +183,13 @@ impl Stack for Duration<$t, [u32; $n]> {
 
 impl_duration!(Replace, 1);
 impl_duration!(Queue, 5);
+impl_duration!(Queue, 25);
 impl_intensity!(Replace, 1);
 impl_intensity!(Replace, 25);
+impl_intensity!(Queue,   25);
 impl_intensity!(Replace, 1500);
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Simulator<T: Stack> {
     /// The boon-stack.
     #[serde(skip)]
@@ -222,9 +224,7 @@ impl<T: Stack> Simulator<T> {
 
     #[inline]
     pub fn update(&mut self, time: u64) {
-        assert!(time >= self.time, "time: {}, self.time: {}", time, self.time);
-
-        self.stack.update((time - self.time) as u32);
+        self.stack.update(time.saturating_sub(self.time) as u32);
 
         self.time = time;
     }
@@ -275,6 +275,47 @@ impl<T: Stack> Simulator<T> {
     #[inline]
     pub fn stripped(&self) -> u32 {
         self.stripped
+    }
+}
+
+#[macro_export]
+macro_rules! buff_table {
+    (
+        $struct:ident (
+            $( $buff:ident $id:tt $kind:ident $type:ident $stacks:tt ),+
+        )
+    ) => {
+#[derive(Debug, Clone, Serialize)]
+pub struct $struct {
+    $(
+        $buff: Simulator<$kind<$type, [u32; $stacks]>>
+    ),*
+}
+
+impl $struct {
+    pub fn new(agent_id: AgentId) -> Self {
+        $struct {
+            $(
+                $buff: Simulator::new(agent_id)
+            ),+
+        }
+    }
+
+    pub fn update(&mut self, time: u64) {
+        $(
+            self.$buff.update(time);
+        )+
+    }
+
+    pub fn add_event<E: Buff>(&mut self, e: E) {
+        match e.skill() {
+        $(
+            $id => self.$buff.add_event(e.clone()),
+        )+
+            _ => {},
+        }
+    }
+}
     }
 }
 
