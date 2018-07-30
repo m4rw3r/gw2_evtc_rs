@@ -293,9 +293,9 @@ impl<'a> Metadata<'a> {
     }
 
     pub fn agents_for_master(&self, a: &Agent) -> impl Iterator<Item=&Agent> {
-        let master_id = a.meta.instid;
+        let master_id = a.id();
 
-        self.agents.iter().filter(move |a| a.meta.master_instid == master_id)
+        self.agents.iter().filter(move |a| a.meta.master_agent == master_id)
     }
 
     #[inline]
