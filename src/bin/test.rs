@@ -68,7 +68,7 @@ fn main() {
         out.write(JS).unwrap();
         out.write(&b"
 
-evtc_rs("[..]).unwrap();
+var evtc_data = "[..]).unwrap();
     }
 
     if name.ends_with(".zip") {
@@ -89,7 +89,9 @@ evtc_rs("[..]).unwrap();
     }
 
     if ! is_json {
-        out.write(&b", document.getElementById(\"main\"));</script>
+        out.write(&b";
+evtc_rs(evtc_data, document.getElementById(\"main\"));
+</script>
   </body>
 </html>"[..]).unwrap();
     }

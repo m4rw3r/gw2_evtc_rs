@@ -10,17 +10,11 @@ use evtc::SkillList;
 use evtc::SpeciesId;
 use evtc::TimeSeries;
 use evtc::Event;
-use evtc::event::Buff;
+use evtc::event::raw::CombatEventV1;
 use evtc::AgentId;
 use evtc::event::Source;
-use evtc::buff::BasicBuff;
-use evtc::buff::Might;
-use evtc::buff::Quickness;
-use evtc::buff::Queue;
-use evtc::buff::Replace;
-use evtc::buff::Simulator;
-use evtc::buff::Duration;
-use evtc::buff::Intensity;
+use evtc::buff::MetadataMap;
+use evtc::buff::table as buffs;
 use evtc::EventIteratorExt;
 
 use evtc::Language;
@@ -92,23 +86,8 @@ impl<'a> AgentStatistics<'a> {
     }
 }
 
-buff_table!(Buffs (
-    aegis          743 Duration  Queue    5,
-    alacrity     30328 Duration  Queue    5,
-    fury           725 Duration  Queue    5,
-    might          740 Intensity Replace 25,
-    protection     717 Duration  Queue    5,
-    quickness     1187 Duration  Queue    5,
-    regeneration   718 Duration  Queue    5,
-    resistance   26980 Duration  Queue    5,
-    retaliation    873 Duration  Queue    5,
-    stability     1122 Intensity Queue   25,
-    swiftness      719 Duration  Queue    5,
-    vigor          726 Duration  Queue    5,
-));
-
-#[derive(Debug, Clone, Serialize)]
-struct PlayerSummary<'a> {
+#[derive(Serialize)]
+struct PlayerSummary<'a, E: Event> {
     agent:              &'a Agent,
     #[serde(rename="hits")]
     hit_stats:          PowerCondiHits,
@@ -117,11 +96,11 @@ struct PlayerSummary<'a> {
     agents:             Vec<AgentStatistics<'a>>,
     #[serde(rename="activationLog")]
     activation_log:     ActivationLog,
-    buffs:              Buffs,
+    buffs:              buffs::Map<E::BuffEvent>,
     series:             TimeSeries,
 }
 
-impl<'a> PlayerSummary<'a> {
+impl<'a, E: Source> PlayerSummary<'a, E> {
     fn new(meta: &'a Metadata<'a>, agent: &'a Agent) -> Self {
         let gadgets = group_agents_by_species(meta.agents_for_master(agent));
 
@@ -134,13 +113,13 @@ impl<'a> PlayerSummary<'a> {
                                             .map(AgentStatistics::new)
                                             .collect(),
             activation_log: Default::default(),
-            buffs:          Buffs::new(agent.id()),
+            buffs:          buffs::Map::new(agent.id()),
             series:         TimeSeries::new(meta),
         }
     }
 
     // TODO: Do we really filter events before this?
-    fn parse<I: Iterator<Item=E>, E: Source>(mut self, bosses: &[AgentId], i: I) -> Self {
+    fn parse<I: Iterator<Item=E>>(mut self, bosses: &[AgentId], i: I) -> Self {
         let mut t = 0;
 
         for e in i {
@@ -207,11 +186,12 @@ struct EncounterInfo {
     success:      bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
-struct Data<'a> {
+#[derive(Serialize)]
+struct Data<'a, E: Event> {
     encounter: EncounterInfo,
-    players:   Vec<PlayerSummary<'a>>,
+    players:   Vec<PlayerSummary<'a, E::SourceEvent>>,
     enemies:   Vec<BossSummary<'a>>,
+    buffs:     MetadataMap,
     skills:    SkillList<'a>,
 }
 
@@ -225,58 +205,14 @@ fn group_agents_by_species<'a, I: Iterator<Item=&'a Agent>>(iter: I) -> FnvHashM
     map
 }
 
-fn mk_boon_filter<E: Buff>(a: AgentId) -> impl Fn(E) -> Option<E> {
-    move |e: E| {
-        if e.is_remove() {
-            e.from_agent(a)
-        }
-        else {
-            e.targeting_agent(a)
-        }
-    }
-}
-
 pub fn parse_data<W: Write>(buffer: &[u8], logname: String, pretty:bool, writer: W) -> Result<(), JSONError> {
-    use evtc::Buff;
     let evtc = raw::transmute(buffer);
     let meta = Metadata::new(&evtc);
 
     let bosses:  Vec<_> = meta.bosses().collect();
-    let bossIds: Vec<_> = bosses.iter().map(|a| a.id()).collect();
+    let boss_ids: Vec<_> = bosses.iter().map(|a| a.id()).collect();
 
 /*
-    let n = meta.encounter_events().map(|e| e.time()).next().unwrap() / 1000;
-    let mut t = n;
-
-for p in meta.agents().iter().filter(|a| a.is_player_character() && a.name() == "Mirabelle Ageryn") {
-    let mut quickness = Quickness::new(p.id());
-    let mut might     = Might::new(p.id());
-    let mut spotter   = BasicBuff::new(p.id());
-
-    for e in meta.encounter_events().related_to(p) {
-        if e.time() != t {
-            quickness.update(e.time());
-            might.update(e.time());
-            spotter.update(e.time());
-        }
-
-        if let Some(e) = e.clone().into_buff() {
-            if e.skill() == 1187 {
-                quickness.add_event(e);
-            }
-            else if e.skill() == 740 {
-                might.add_event(e);
-            }
-            else if e.skill() == 14055 {
-                spotter.add_event(e);
-            }
-        }
-
-        t = e.time();
-    }
-
-    println!("{}", serde_json::to_string(&quickness).unwrap());
-    println!("{}", serde_json::to_string(&might).unwrap());
 
     println!("Quickness:");
     println!("uptime:    {}", (quickness.uptime() as f64) / (meta.log_end() - meta.log_start()) as f64 / 1000.0);
@@ -297,45 +233,15 @@ panic!("FOO");
                                .filter(|a| a.is_player_character())
                                .map(|a| PlayerSummary::new(&meta, a)
                                         // TODO: Is related to enough to get everything?
-                                        .parse(&bossIds[..], meta.encounter_events().related_to(a)))
+                                        .parse(&boss_ids[..], meta.encounter_events().related_to(a)))
                                .collect();
-
-/*
-    let player_summaries = meta.agents().iter().filter(|a| a.is_player_character()).map(|a| PlayerSummary {
-        agent: a,
-        hit_stats:          meta.encounter_events()
-                                .filter_map(Event::into_damage)
-                                .from_agent_or_gadgets(a)
-                                .collect(),
-        boss_hit_stats:     meta.encounter_events()
-                                .filter_map(Event::into_damage)
-                                .from_agent_or_gadgets(a)
-                                .targeting_any_of(&bosses[..])
-                                .collect(),
-        agents:             (&[vec![a]]).iter()
-                                        .chain(group_agents_by_species(meta.agents_for_master(a)).values())
-                                        .map(|minions| AgentStatistics {
-            agent: minions[0],
-            stats: meta.encounter_events()
-                       .filter_map(Event::into_damage)
-                       .from_any_of(&minions[..])
-                       .targeting_any_of(&bosses[..])
-                       .collect(),
-        }).collect(),
-        activation_log: meta.encounter_events()
-                            .from_agent_or_gadgets(a)
-                            .filter_map(Event::into_activation)
-                            .collect(),
-        series:    TimeSeries::parse_agent(&meta, a),
-    }).collect();
-    */
 
     let boss_summaries: Vec<_> = meta.bosses().map(|b| BossSummary {
         agent: b,
         series: TimeSeries::parse_agent(&meta, b),
     }).collect();
 
-    let data = Data {
+    let data: Data<&CombatEventV1> = Data {
         encounter: EncounterInfo {
             log_start:    meta.log_start(),
             log_end:      meta.log_end(),
@@ -348,6 +254,7 @@ panic!("FOO");
         },
         players:   player_summaries,
         enemies:   boss_summaries,
+        buffs:     buffs::META_MAP,
         skills:    meta.skill_list(),
     };
 

@@ -3,15 +3,14 @@ use event::Buff;
 
 use AgentId;
 
-use std::mem;
+use serde::ser::Serialize;
+use serde::ser::Serializer;
+use serde::ser::SerializeMap;
 
-pub type Quickness = Simulator<Duration<Queue, [u32; 5]>>;
-pub type Might     = Simulator<Intensity<Replace, [u32; 25]>>;
-pub type BasicBuff = Simulator<Duration<Replace, [u32; 1]>>;
+use std::mem;
+use std::fmt;
 
 pub trait Stack {
-    /// Creates a new empty stack.
-    fn new() -> Self;
     /// Pushes a new stack with the supplied duration in milliseconds, overstack is returned.
     fn push(&mut self, u32) -> u32;
     /// Updates the stack with the new timestamp difference, milliseconds.
@@ -61,18 +60,14 @@ impl StackType for Replace {
 /// This implies that the current stack is not replaced, even if it is smaller than the
 /// new stack.
 #[derive(Debug, Clone)]
-pub struct Duration<T: StackType, U: Sized>(T, U);
+pub struct Duration<T: StackType, U: Sized>(pub T, pub U);
 
 #[derive(Debug, Clone)]
-pub struct Intensity<T: StackType, U: Sized>(T, U);
+pub struct Intensity<T: StackType, U: Sized>(pub T, pub U);
 
 macro_rules! impl_intensity {
     ($t:ident, $n:expr) => {
 impl Stack for Intensity<$t, [u32; $n]> {
-    fn new() -> Self {
-        Intensity($t, [0; $n])
-    }
-
     fn push(&mut self, mut stack: u32) -> u32 {
         for (i, s) in self.1.iter_mut().enumerate() {
             // Add if the stack is empty or if we are above the locked items and it is lower
@@ -115,10 +110,6 @@ impl Stack for Intensity<$t, [u32; $n]> {
 macro_rules! impl_duration /*_current_duration*/ {
     ($t:ident, $n:expr) => {
 impl Stack for Duration<$t, [u32; $n]> {
-    fn new() -> Self {
-        Duration($t, [0; $n])
-    }
-
     fn push(&mut self, mut stack: u32) -> u32 {
         for (i, s) in self.1.iter_mut().enumerate() {
             // Add if the stack is empty or if we are above the locked items and it is lower
@@ -183,13 +174,12 @@ impl Stack for Duration<$t, [u32; $n]> {
 
 impl_duration!(Replace, 1);
 impl_duration!(Queue, 5);
-impl_duration!(Queue, 25);
 impl_intensity!(Replace, 1);
 impl_intensity!(Replace, 25);
 impl_intensity!(Queue,   25);
 impl_intensity!(Replace, 1500);
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
 pub struct Simulator<T: Stack> {
     /// The boon-stack.
     #[serde(skip)]
@@ -209,11 +199,26 @@ pub struct Simulator<T: Stack> {
     stripped:  u32,
 }
 
+impl<T: Stack> fmt::Debug for Simulator<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "Simulator<{}> {{ stack: SKIPPED, time: {time:?}, agent: {agent:?}, uptime: {uptime:?}, overstack: {overstack:?}, stripped: {stripped:?} }}",
+            stringify!(T),
+            time=self.time,
+            agent=self.agent,
+            uptime=self.uptime,
+            overstack=self.overstack,
+            stripped=self.stripped
+        )
+    }
+}
+
 impl<T: Stack> Simulator<T> {
     #[inline]
-    pub fn new(agent: AgentId) -> Self {
+    pub fn new(agent: AgentId, stack: T) -> Self {
         Simulator {
-            stack:     Stack::new(),
+            stack:     stack,
             time:      0,
             uptime:    0,
             overstack: 0,
@@ -278,47 +283,219 @@ impl<T: Stack> Simulator<T> {
     }
 }
 
+pub trait BoxedSimulator<E: Buff> {
+    fn update(&mut self, time: u64);
+    fn add_event(&mut self, e: E);
+    fn stacks(&self) -> usize;
+    fn sum(&self) -> u32;
+    fn uptime(&self) -> u32;
+    fn overstack(&self) -> u32;
+    fn stripped(&self) -> u32;
+}
+
+impl<T: Stack, E:Buff> BoxedSimulator<E> for Simulator<T> {
+    fn update(&mut self, time: u64) { Simulator::update(self, time) }
+    fn add_event(&mut self, e: E) { Simulator::add_event(self, e) }
+    fn stacks(&self) -> usize { Simulator::stacks(self) }
+    fn sum(&self) -> u32 { Simulator::sum(self) }
+    fn uptime(&self) -> u32 { Simulator::uptime(self) }
+    fn overstack(&self) -> u32 { Simulator::overstack(self) }
+    fn stripped(&self) -> u32 { Simulator::stripped(self) }
+}
+
+impl<E:Buff> BoxedSimulator<E> for () {
+    fn update(&mut self, _: u64) {}
+    fn add_event(&mut self, _: E) {}
+    fn stacks(&self) -> usize { 0 }
+    fn sum(&self) -> u32 { 0 }
+    fn uptime(&self) -> u32 { 0 }
+    fn overstack(&self) -> u32 { 0 }
+    fn stripped(&self) -> u32 { 0 }
+}
+
+type BoxSimulator<E> = Box<BoxedSimulator<E>>;
+
+#[derive(Copy, Clone, Eq, PartialEq, Serialize, Debug)]
+pub enum BuffType {
+    Boon,
+    Condition,
+    Buff,
+    Debuff,
+    Item,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct BuffMeta {
+    pub name:     &'static str,
+    pub skill_id: u16,
+    // TODO: Friendly/hostile, offensive/defensive and so on
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MetadataMap(&'static [BuffMeta]);
+
+impl Serialize for MetadataMap {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer {
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+
+        for v in self.0 {
+            map.serialize_entry(&v.skill_id, &v)?;
+        }
+
+        map.end()
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Copy, Serialize)]
+pub struct BuffSnapshot {
+    stacks:    usize,
+    sum:       u32,
+    uptime:    u32,
+    overstack: u32,
+    stripped:  u32,
+}
+
 #[macro_export]
 macro_rules! buff_table {
     (
-        $struct:ident (
-            $( $buff:ident $id:tt $kind:ident $type:ident $stacks:tt ),+
-            $(,)*
-        )
+        $visibility:tt $module:ident {
+        $(
+            $type:ty {
+                $name:expr,
+                skill_id: $id:expr,
+                stack: $kind:expr $(,)*
+            }
+        ),+
+        $(,)*
+        }
     ) => {
-#[derive(Debug, Clone, Serialize)]
-pub struct $struct {
-    $(
-        $buff: Simulator<$kind<$type, [u32; $stacks]>>
-    ),*
-}
 
-impl $struct {
-    pub fn new(agent_id: AgentId) -> Self {
-        $struct {
+$visibility mod $module {
+    use std::fmt;
+
+    use fnv::FnvHashMap;
+
+    use serde::ser::Serialize;
+    use serde::ser::Serializer;
+    use serde::ser::SerializeMap;
+
+    use $crate::AgentId;
+    use $crate::event::Buff;
+    use $crate::buff::Simulator;
+    use $crate::buff::BoxSimulator;
+    use $crate::buff::BuffSnapshot;
+    use $crate::buff::MetadataMap;
+    use $crate::buff::BuffMeta;
+
+    use super::*;
+
+    pub static META_LIST: &'static [BuffMeta] = &[
+        $(
+        BuffMeta {
+            name:     $name,
+            skill_id: $id,
+        }
+        ),*
+    ];
+
+    pub static META_MAP: MetadataMap = MetadataMap(&META_LIST);
+
+    pub fn create_simulator<E: Buff>(agent_id: AgentId, skill_id: u16) -> BoxSimulator<E> {
+        match skill_id {
             $(
-                $buff: Simulator::new(agent_id)
-            ),+
+            $id => Box::new(Simulator::new(agent_id, $kind)),
+            )*
+            // FIXME: Need to skip the boon
+            _ => Box::new(()),
         }
     }
 
-    pub fn update(&mut self, time: u64) {
-        $(
-            self.$buff.update(time);
-        )+
+    pub struct Map<E: Buff> {
+        agent_id: AgentId,
+        map:     FnvHashMap<u16, BoxSimulator<E>>,
     }
 
-    pub fn add_event<E: Buff>(&mut self, e: E) {
-        match e.skill() {
-        $(
-            $id => self.$buff.add_event(e.clone()),
-        )+
-            _ => {},
+    impl<E: Buff> Map<E> {
+        pub fn new(agent_id: AgentId) -> Self {
+            Map {
+                map: FnvHashMap::default(),
+                agent_id,
+            }
+        }
+
+        pub fn update(&mut self, time: u64) {
+            for v in self.map.values_mut() {
+                v.update(time);
+            }
+        }
+
+        pub fn add_event(&mut self, e: E) {
+            let agent_id = self.agent_id;
+
+            self.map.entry(e.skill())
+                    .or_insert_with(|| create_simulator(agent_id, e.skill()))
+                    .add_event(e);
+        }
+
+        pub fn snapshots<'a>(&'a self) -> impl Iterator<Item=(u16, BuffSnapshot)> + 'a {
+            self.map.iter().map(|(&k, v)| (k, BuffSnapshot {
+                stacks:    v.stacks(),
+                sum:       v.sum(),
+                uptime:    v.uptime(),
+                overstack: v.overstack(),
+                stripped:  v.stripped(),
+            }))
+        }
+    }
+
+    impl<E: Buff> fmt::Debug for Map<E> {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "Map {{ ")?;
+
+            for (k, v) in self.snapshots() {
+                write!(f, "{} => {:?}, ", k, v)?;
+            }
+
+            write!(f, "}}")
+        }
+    }
+
+    impl<E: Buff> Serialize for Map<E> {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+          where S: Serializer {
+            let mut map = serializer.serialize_map(Some(self.map.len()))?;
+
+            for (k, v) in self.snapshots() {
+                map.serialize_entry(&k, &v)?;
+            }
+
+            map.end()
         }
     }
 }
     }
 }
+
+buff_table!(
+pub table {
+    BuffType::Boon{"Aegis",        skill_id: 743,   stack: Duration(Queue, [0; 5])},
+    BuffType::Boon{"Alacrity",     skill_id: 30328, stack: Duration(Queue, [0; 5])},
+    BuffType::Boon{"Fury",         skill_id: 725,   stack: Duration(Queue, [0; 5])},
+    BuffType::Boon{"Might",        skill_id: 740,   stack: Intensity(Replace, [0; 25])},
+    BuffType::Boon{"Protection",   skill_id: 717,   stack: Duration(Queue, [0; 5])},
+    BuffType::Boon{"Quickness",    skill_id: 1187,  stack: Duration(Queue, [0; 5])},
+    BuffType::Boon{"Regeneration", skill_id: 718,   stack: Duration(Queue, [0; 5])},
+    BuffType::Boon{"Resistance",   skill_id: 26980, stack: Duration(Queue, [0; 5])},
+    BuffType::Boon{"Retaliation",  skill_id: 873,   stack: Duration(Queue, [0; 5])},
+    BuffType::Boon{"Stability",    skill_id: 1122,  stack: Intensity(Queue, [0; 25])},
+    BuffType::Boon{"Swiftness",    skill_id: 719,   stack: Duration(Queue,  [0; 5])},
+    BuffType::Boon{"Vigor",        skill_id: 726,   stack: Duration(Queue,  [0; 5])},
+    // Conditions
+    // Buffs
+    BuffKind::Buff{"Banner of Strength",   skill_id: 14417, stack: Duration(Replace, [0; 1])},
+    BuffKind::Buff{"Banner of Discipline", skill_id: 14449, stack: Duration(Replace, [0; 1])},
+});
 
 #[cfg(test)]
 mod test {

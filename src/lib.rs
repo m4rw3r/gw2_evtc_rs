@@ -270,6 +270,7 @@ struct TimeEntry {
     dead:        bool,
     /// If the player swapped weapon this second
     weapon_swap: bool,
+    // TODO: Add Skill-casts, add boons (FnvHashMap<u16, BuffSnapshot>)
 }
 
 impl TimeEntry {
