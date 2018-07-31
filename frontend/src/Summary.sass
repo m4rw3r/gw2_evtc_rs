@@ -1,9 +1,12 @@
 
 .summary
   font-size: 1.4em
-  margin: 2em 1em
+  
+  table
+    margin: 2em auto
 
   .profession
+    width:           2em
     justify-content: right
 
     svg
@@ -30,23 +33,24 @@
     color: #777
     flex: 1
 
+  .graph
+    display: block
+    margin: 1em auto
+
+  .line
+    fill:   none
+    // TODO: Proper colours
+    stroke: #999
+
 table
-  display:         flex
-  flex-direction:  column
   justify-content: space-between
 
   tr
-    display: flex
-    flex-direction: row
-    align-items:     center
-    width: 100%
-    // flex-wrap:      no-wrap
+    align-items: center
+    width:       100%
 
   td,
   th
-    display:        flex
-    flex-grow:      1
-    flex-basis:     0
     vertical-align: middle
     align-items:    center
-    padding:        0.25em
+    padding:        0.25em 0.5em

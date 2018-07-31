@@ -1,12 +1,12 @@
 {
     "name": "evtc_rs_frontend",
     "scripts": {
-        "build":     "concurrently npm:build-*",
-        "build-js":  "rollup -c",
+        "build": "concurrently npm:build-*",
+        "build-js": "rollup -c",
         "build-css": "sass src/index.sass dist/style.css --style compressed",
-        "dist":      "cross-env NODE_ENV=production npm run build",
-        "watch":     "concurrently npm:watch-*",
-        "watch-js":  "rollup -w -c",
+        "dist": "cross-env NODE_ENV=production npm run build",
+        "watch": "concurrently npm:watch-*",
+        "watch-js": "rollup -w -c",
         "watch-css": "sass --watch src/index.sass:dist/style.css"
     },
     "dependencies": {
@@ -20,10 +20,11 @@
         "@babel/preset-env": "^7.0.0-beta.50",
         "concurrently": "^3.6.0",
         "cross-env": "^5.2.0",
+        "d3": "^5.5.0",
         "nodemon": "^1.18.1",
-        "rollup": "^0.62.0",
+        "rollup": "^0.63.4",
         "rollup-plugin-babel": "^4.0.0-beta.7",
-        "rollup-plugin-gzip": "^1.4.0",
+        "rollup-plugin-gzip": "^2.0.0",
         "rollup-plugin-node-resolve": "^3.3.0",
         "rollup-plugin-replace": "^2.0.0",
         "rollup-plugin-uglify": "^4.0.0",
