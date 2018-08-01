@@ -48,7 +48,7 @@ impl StackType for Replace {
 }
 
 /// Wrapper for a duration-stacking stack
-/// 
+///
 /// # Tests
 ///
 /// By casting Well of Action (8s) + shatters with Seize the Moment (3s) you max out on
@@ -313,7 +313,7 @@ impl<E:Buff> BoxedSimulator<E> for () {
     fn stripped(&self) -> u32 { 0 }
 }
 
-type BoxSimulator<E> = Box<BoxedSimulator<E>>;
+type BoxSimulator<E> = Box<BoxedSimulator<E> + Send>;
 
 #[derive(Copy, Clone, Eq, PartialEq, Serialize, Debug)]
 pub enum BuffType {

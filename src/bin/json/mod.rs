@@ -1,29 +1,26 @@
 use fnv::FnvHashMap;
 
-use evtc::raw;
-
 use evtc::Agent;
+use evtc::AgentId;
 use evtc::Boss;
+use evtc::Damage;
+use evtc::Event;
+use evtc::EventIteratorExt;
 use evtc::HitType;
+use evtc::Language;
 use evtc::Metadata;
 use evtc::SkillList;
 use evtc::SpeciesId;
 use evtc::TimeSeries;
-use evtc::Event;
-use evtc::event::raw::CombatEventV1;
-use evtc::AgentId;
-use evtc::event::Source;
 use evtc::buff::MetadataMap;
 use evtc::buff::table as buffs;
-use evtc::EventIteratorExt;
-
-use evtc::Language;
-
+use evtc::event::Source;
+use evtc::event::raw::CombatEventV1;
+use evtc::raw;
 use evtc::statistics::Abilities;
 use evtc::statistics::ActivationLog;
 use evtc::statistics::Hits;
 use evtc::statistics::Sink;
-use evtc::Damage;
 
 use serde_json;
 
@@ -135,9 +132,7 @@ impl<'a, E: Source> PlayerSummary<'a, E> {
 
             if let Some(e) = e.clone()
                               .from_agent_or_gadgets(self.agent.id(), self.agent.instance_id()) {
-                if let Some(e) = e.clone().into_activation() {
-                    self.activation_log.add_event(e);
-                }
+                self.activation_log.add_event(e.clone());
 
                 if let Some(d) = e.clone()
                                 .into_damage() {

@@ -31,8 +31,11 @@ pub static UNLISTED_SKILLS: &'static [Skill] = &[
     Skill { id: 1066,  name: *b"Resurrect\0                                                      "},
     Skill { id: 1175,  name: *b"Bandage\0                                                        "},
     Skill { id: 65001, name: *b"Dodge\0                                                          "},
+    Skill { id: WEAPON_SWAP as u32, name: *b"Weapon Swap\0                                                    "},
     // TODO: Add boss-specific skills
 ];
+
+pub const WEAPON_SWAP: u16 = 65535 - 1;
 
 /// The combat data version, `V1` is not binary-compatible with `V2`.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -409,136 +412,7 @@ impl CombatEventV1 {
             Some(InstanceId::new(self.src_master_instid))
         }
     }
-
-    /*
-    #[inline(always)]
-    fn match_activation(&self) -> EventType {
-        match (self.is_activation, self.is_buffremove) {
-            (CombatActivation::Normal,     _) => EventType::Activation { skill: self.skill_id, cast: Activation::Normal(self.value as u32) },
-            (CombatActivation::Quickness,  _) => EventType::Activation { skill: self.skill_id, cast: Activation::Normal(self.value as u32) },
-            (CombatActivation::CancelFire, _) => EventType::Activation { skill: self.skill_id, cast: Activation::CancelFire(self.value as u32) },
-            (CombatActivation::Cancel,     _) => EventType::Activation { skill: self.skill_id, cast: Activation::Cancel(self.value as u32) },
-            (CombatActivation::Reset,      _) => EventType::Activation { skill: self.skill_id, cast: Activation::Cancel(self.value as u32) },
-            // TODO: Add cause
-            (CombatActivation::None, CombatBuffRemove::All) |
-            (CombatActivation::None, CombatBuffRemove::Manual) => EventType::WithTarget {
-                agent:    self.dst_agent(),
-                instance: self.dst_instid(),
-                event:    TargetEvent::Buff(self.skill_id, Buff::RemoveAll),
-            },
-            (CombatActivation::None, CombatBuffRemove::Single) => EventType::WithTarget {
-                agent:    self.dst_agent(),
-                instance: self.dst_instid(),
-                event:    TargetEvent::Buff(self.skill_id, Buff::RemoveSingle)
-            },
-            (CombatActivation::None, CombatBuffRemove::None) => EventType::WithTarget {
-                agent:    self.dst_agent(),
-                instance: self.dst_instid(),
-                event:    match (self.buff > 0, self.buff_dmg == 0) {
-                    (true, true) =>
-                        // TODO: Add info about duration and number of stacks and so on
-                        TargetEvent::Buff(self.skill_id, Buff::Application),
-                    (x, _) => TargetEvent::Damage {
-                        skill:      self.skill_id,
-                        damage:     if x { self.buff_dmg as i64 } else { self.value as i64 },
-                        flanking:   self.is_flanking > 0,
-                        moving:     self.is_src_moving > 0,
-                        src_over90: self.is_src_ninety > 0,
-                        hit_type:   if x { HitType::Condi } else {
-                            match self.result {
-                                HitResult::Normal      => HitType::Normal,
-                                HitResult::Crit        => HitType::Crit,
-                                HitResult::Glance      => HitType::Glance,
-                                HitResult::Block       => HitType::Block,
-                                HitResult::Evade       => HitType::Evade,
-                                HitResult::Interrupt   => HitType::Interrupt,
-                                HitResult::Absorb      => HitType::Absorb,
-                                HitResult::Blind       => HitType::Blind,
-                                HitResult::KillingBlow => HitType::KillingBlow,
-                            }
-                        }
-                    }
-                }
-            },
-        }
-    }
-    */
 }
-
-/*
-impl IntoEvent for CombatEventV1 {
-    #[inline(always)]
-    fn is_meta_event(&self) -> bool {
-        match self.is_statechange {
-            CombatStateChange::Language | CombatStateChange::GwBuild | CombatStateChange::ShardId | CombatStateChange::LogStart | CombatStateChange::LogEnd => true,
-            _                           => false,
-        }
-    }
-
-    #[inline(always)]
-    fn to_meta_event(&self) -> Option<MetaEvent> {
-        match self.is_statechange {
-            CombatStateChange::Language        => Some(MetaEvent::Language(Language::from_agent_id(self.src_agent))),
-            CombatStateChange::GwBuild         => Some(MetaEvent::Gw2Build(self.src_agent)),
-            CombatStateChange::ShardId         => Some(MetaEvent::Gw2Build(self.src_agent)),
-            CombatStateChange::LogStart        => Some(MetaEvent::LogStart { server: self.value as u32, local: self.buff_dmg as u32, arcdps_id: self.src_agent }),
-            CombatStateChange::LogEnd          => Some(MetaEvent::LogEnd { server: self.value as u32, local: self.buff_dmg as u32, arcdps_id: self.src_agent }),
-            _                                  => None,
-        }
-    }
-
-    #[inline(always)]
-    fn to_event(&self) -> Option<Event> {
-        if self.is_meta_event() {
-            None
-        }
-        else {
-            Some(Event {
-                time:            self.time,
-                // TODO: Can this be improved?
-                // TODO: Should we still flip?
-                // We flip src and dst when we are removing buffs, dst is source
-                // agent:           if self.is_activation == CombatActivation::None && self.is_buffremove != CombatBuffRemove::None { self.dst_agent()  } else { self.src_agent() },
-                // instance:        if self.is_activation == CombatActivation::None && self.is_buffremove != CombatBuffRemove::None { self.dst_instid() } else { self.src_instid() },
-                //
-                agent:           self.src_agent(),
-                instance:        self.src_instid(),
-                master_instance: self.src_master_instid(),
-                event:           match self.is_statechange {
-                    CombatStateChange::EnterCombat     => EventType::EnterCombat(self.dst_agent),
-                    CombatStateChange::ExitCombat      => EventType::ExitCombat,
-                    CombatStateChange::ChangeUp        => EventType::ChangeUp,
-                    CombatStateChange::ChangeDead      => EventType::ChangeDead,
-                    CombatStateChange::ChangeDown      => EventType::ChangeDown,
-                    CombatStateChange::Spawn           => EventType::Spawn,
-                    CombatStateChange::Despawn         => EventType::Despawn,
-                    CombatStateChange::HealthUpdate    => EventType::HealthUpdate(self.dst_agent),
-                    CombatStateChange::WeapSwap        => EventType::WeaponSwap,
-                    CombatStateChange::MaxHealthUpdate => EventType::MaxHealthUpdate(self.dst_agent),
-                    CombatStateChange::PointOfView     => EventType::PointOfView,
-                    CombatStateChange::Reward          => EventType::Reward(self.dst_agent, self.value as u32),
-                    CombatStateChange::BuffInitial     => {
-                        // TODO: What is this?
-                        EventType::BuffInitial
-                    },
-                    CombatStateChange::Position        => {
-                        let pos: &[f32; 3] = unsafe { mem::transmute(&self.dst_agent) };
-
-                        EventType::Position { x: pos[0], y: pos[1], z: pos[2] }
-                    },
-                    CombatStateChange::Velocity        => {
-                        let pos: &[f32; 3] = unsafe { mem::transmute(&self.dst_agent) };
-
-                        EventType::Position { x: pos[0], y: pos[1], z: pos[2] }
-                    },
-                    CombatStateChange::None            => self.match_activation(),
-                    _                                  => unreachable!(),
-                }
-            })
-        }
-    }
-}
-*/
 
 impl<'a> Event for &'a CombatEventV1 {
     type MetaEvent = MetaEvent<&'a CombatEventV1>;

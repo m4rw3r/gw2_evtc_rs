@@ -39,6 +39,7 @@ const skills = [
   { name: "Illusionary Sword Attack", id: 10230, type: "Skill", icon: "https://render.guildwars2.com/file/755CAC115104F0AA0630DCEB472D0678B62A916E/103723.png" },
   // Non-skills
   { name: "Dodge", id: 65001, type: "Dodge", icon: "https://wiki.guildwars2.com/images/c/cc/Dodge_Instructor.png" },
+  { name: "Weapon Swap", id: 65534, type: "Weapon Swap", icon: "https://wiki.guildwars2.com/images/c/ce/Weapon_Swap_Button.png" },
   // TODO: More stuff
 ];
 const skillData = {};

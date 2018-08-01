@@ -1,7 +1,11 @@
 use event::Activation;
 use event::CastType;
 use event::Damage;
+use event::Event;
 use event::HitType;
+use event::Source;
+use event::StateChange;
+use event::raw::WEAPON_SWAP;
 
 use fnv::FnvHashMap;
 
@@ -35,7 +39,7 @@ impl<T: $u> ::std::iter::FromIterator<T> for $t {
 
 sink_from_iter!(Hits, Damage);
 sink_from_iter!(Abilities, Damage);
-sink_from_iter!(ActivationLog, Activation);
+sink_from_iter!(ActivationLog, Source);
 
 /// Statistics for hits
 #[derive(Debug, Copy, Clone, Serialize)]
@@ -179,34 +183,52 @@ impl Serialize for ActivationLog {
     }
 }
 
-impl<T: Activation> Sink<T> for ActivationLog {
+impl<T: Source> Sink<T> for ActivationLog {
     #[inline]
     fn add_event(&mut self, e: T) {
-        let cast  = e.cast();
-        let skill = e.skill();
-
-        match cast {
-            CastType::Normal(_) | CastType::Quickness(_) => self.last = Some((e.time(), skill, cast)),
-            x => if let Some((time, s, start)) = self.last {
-                if skill != s {
-                    return;
-                }
-
+        match e.state_change() {
+            // Weapon swaps can happen for gadgets/minions/pets too apparently, and sometimes they
+            // are duplicated when using kits or conjures
+            Some(StateChange::WeaponSwap) => if e.master_instance().is_none() &&
+                self.log.last().map(|a| (a.time, a.skill)).unwrap_or((0, 0)) != (e.time(), WEAPON_SWAP) {
                 self.log.push(ActivationEntry {
-                    time,
-                    skill,
-                    quickness: if let CastType::Quickness(_) = start { true } else { false },
-                    canceled:  if let CastType::Cancel(_)    = x { true } else { false },
-                    duration: match x {
-                        CastType::Normal(d)     => d,
-                        CastType::Quickness(d)  => d,
-                        CastType::CancelFire(d) => d,
-                        CastType::Cancel(d)     => d,
-                        CastType::Reset         => 0,
-                    },
+                    time:      e.time(),
+                    skill:     WEAPON_SWAP,
+                    quickness: false,
+                    canceled:  false,
+                    duration:  0,
                 });
+            },
+            _ => {},
+        }
 
-                self.last = None;
+        if let Some(e) = e.into_activation() {
+            let cast  = e.cast();
+            let skill = e.skill();
+
+            match cast {
+                CastType::Normal(_) | CastType::Quickness(_) => self.last = Some((e.time(), skill, cast)),
+                x => if let Some((time, s, start)) = self.last {
+                    if skill != s {
+                        return;
+                    }
+
+                    self.log.push(ActivationEntry {
+                        time,
+                        skill,
+                        quickness: if let CastType::Quickness(_) = start { true } else { false },
+                        canceled:  if let CastType::Cancel(_)    = x { true } else { false },
+                        duration: match x {
+                            CastType::Normal(d)     => d,
+                            CastType::Quickness(d)  => d,
+                            CastType::CancelFire(d) => d,
+                            CastType::Cancel(d)     => d,
+                            CastType::Reset         => 0,
+                        },
+                    });
+
+                    self.last = None;
+                }
             }
         }
     }
