@@ -8,7 +8,7 @@ import Profession from "./icons/Profession";
 export const TAB_SUMMARY = "_SUMMARY";
 
 export default class PlayerList extends Component {
-  render({ onSelect, players, selected }, _, { bossDuration }) {
+  render({ onSelect, players, selected }, _, { format: { dps } }) {
 
     const Player = ({ agent }) => {
       const { name
@@ -47,7 +47,7 @@ export default class PlayerList extends Component {
 
     const grouped = groupBy(players, ({ agent: { subgroup }}) => subgroup).map(group => group.sort((a, b) => a.agent.name.localeCompare(b.agent.name)));
 
-    const totalBossDPS = players.map(player => player.bossHits.power.totalDamage + player.bossHits.condi.totalDamage).reduce((a, b) => a + b, 0) / bossDuration;
+    const totalBossDamage = players.map(player => player.bossHits.power.totalDamage + player.bossHits.condi.totalDamage).reduce((a, b) => a + b, 0);
 
     return <div class="player-list">
       <div class={`player${selected === TAB_SUMMARY ? " active" : ""}`} onClick={() => onSelect(TAB_SUMMARY)}>
@@ -55,7 +55,7 @@ export default class PlayerList extends Component {
         <div class="name">
           <h3>Summary</h3>
           <div class="accountName">
-            Boss DPS: {totalBossDPS.toFixed(0)}
+            Boss DPS: {dps(totalBossDamage)}
           </div>
         </div>
         <div class="info"></div>

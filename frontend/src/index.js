@@ -39,12 +39,38 @@ class App extends Component {
       end:   Math.max(end, agent.diedAt || agent.lastAware),
     }), { start: Number.MAX_VALUE, end: 0 });
 
-    const bossDuration = (end - start) / 1000;
-    const duration     = (encounter.logEnd - encounter.logStart);
+    const duration     = (encounter.logEnd - encounter.logStart) * 1000;
+    const bossDuration = (end - start);
+
+
+    const time = timestamp => {
+      timestamp -= start;
+      timestamp /= 1000;
+
+      return `${(timestamp / 60)|0}:${(timestamp % 60).toFixed(1)}`;
+    };
+    const number = value => value.toLocaleString();
+    const dps    = total => number(Math.round(total / bossDuration * 1000));
+    const percent = fraction  => (fraction * 100).toFixed(2) + "%";
 
     return {
-      duration,
-      bossDuration,
+      encounter: {
+        start:    encounter.logStart * 1000,
+        end:      encounter.logEnd * 1000,
+        duration: duration,
+      },
+      boss: {
+        start,
+        end,
+        duration: bossDuration,
+      },
+      format: {
+        time,
+        damage: number,
+        number,
+        dps,
+        percent,
+      },
     };
   }
   onSelect(name) {
@@ -54,10 +80,11 @@ class App extends Component {
   }
   render(data, { selected }) {
     const { encounter, players, enemies, skills } = data;
+    const player = players.find(p => p.agent.name === selected);
 
     const component = selected === TAB_SUMMARY
       ? <Summary {...data} />
-      : <PlayerSummary {...data} player={players.find(p => p.agent.name === selected)} />;
+      : <PlayerSummary {...data} key={player.agent.accountName} player={player} />;
 
     return <div class="evtc">
       <Encounter {...encounter} />

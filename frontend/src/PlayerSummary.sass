@@ -1,6 +1,6 @@
 
 .player-summary
-  font-size:       1.2em
+  font-size:       1.333em
   justify-content: center
 
   h3
@@ -41,34 +41,27 @@
     height: 1em
     margin: 0 1rem
 
-  .agent
+  .activations
+    @include         block-margins
     display:         flex
-    justify-content: center
+    flex-direction:  horizontal
+    flex-wrap:       wrap
+    justify-content: left
 
-  .ability-list
-    //margin: 1em 0
-
-    .icon
-      justify-content: right
+    .activation
+      display: flex
+      flex:    1 1 2em
 
       img
-        display: block
-        max-width: 100%
-        max-height: 100%
+        border: 2px solid transparent
+        width:  2em
+        height: 2em
+        margin: 0.1em
 
+      &.quickness
+        img
+          border-color: $success
 
-    .name
-      flex: 4
-
-    tr
-      th
-        font-weight: bold
-
-      td,
-      th
-        //padding:    0.25rem 0.5rem
-        //text-align: right
-        //vertical-align: middle
-
-        //&.name
-          //text-align: left
+      &.canceled
+        img
+          border-color: $failure

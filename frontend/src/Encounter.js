@@ -3,18 +3,15 @@ import { h
        } from "preact";
 
 export default class Encounter extends Component {
-  render({ boss, success, logName, logStart }, _, { duration }) {
+  render({ boss, success, logName }, _, { encounter: { start }, boss: { end }, format: { time } }) {
     const className = success ? "success" : "failure";
-
-    const minutes = (duration / 60)|0;
-    const seconds = (duration % 60);
-    const start   = new Date(logStart * 1000);
+    const startDate = new Date(start);
 
     return <div class="encounter">
-      <h2 >{boss} <span class={className}>{success ? "Success" : "Failure"}</span></h2>
+      <h2>{boss} <span class={className}>{success ? "Success" : "Failure"}</span></h2>
+      <p>{startDate.toString()}</p>
       <p>Filename: {logName}</p>
-      <p>{minutes ? minutes + " minutes " : ""} {seconds.toFixed(1)} seconds</p>
-      <p>{start.toString()}</p>
+      <p class={className}>{success ? "Success" : "Failure"} in {time(end)}</p>
     </div>;
   }
 }
