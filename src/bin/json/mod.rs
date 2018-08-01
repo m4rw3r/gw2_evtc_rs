@@ -94,6 +94,8 @@ struct PlayerSummary<'a, E: Event> {
     #[serde(rename="activationLog")]
     activation_log:     ActivationLog,
     buffs:              buffs::Map<E::BuffEvent>,
+    #[serde(rename="incomingDamage")]
+    incoming_damage:    AbilityAndTotal,
     series:             TimeSeries,
 }
 
@@ -103,15 +105,16 @@ impl<'a, E: Source> PlayerSummary<'a, E> {
 
         PlayerSummary {
             agent,
-            hit_stats:      Default::default(),
-            boss_hit_stats: Default::default(),
-            agents:         (&[vec![agent]]).iter()
-                                            .chain(gadgets.values())
-                                            .map(AgentStatistics::new)
-                                            .collect(),
-            activation_log: Default::default(),
-            buffs:          buffs::Map::new(agent.id()),
-            series:         TimeSeries::new(meta),
+            hit_stats:       Default::default(),
+            boss_hit_stats:  Default::default(),
+            agents:          (&[vec![agent]]).iter()
+                                             .chain(gadgets.values())
+                                             .map(AgentStatistics::new)
+                                             .collect(),
+            activation_log:  Default::default(),
+            incoming_damage: Default::default(),
+            buffs:           buffs::Map::new(agent.id()),
+            series:          TimeSeries::new(meta),
         }
     }
 
@@ -128,6 +131,12 @@ impl<'a, E: Source> PlayerSummary<'a, E> {
 
             if let Some(b) = e.clone().into_buff() {
                 self.buffs.add_event(b);
+            }
+
+            if let Some(e) = e.clone().targeting_agent(self.agent.id()) {
+                if let Some(d) = e.into_damage() {
+                    self.incoming_damage.add_event(d);
+                }
             }
 
             if let Some(e) = e.clone()
@@ -193,8 +202,8 @@ struct Data<'a, E: Event> {
 fn group_agents_by_species<'a, I: Iterator<Item=&'a Agent>>(iter: I) -> FnvHashMap<SpeciesId, Vec<&'a Agent>> {
     let mut map = FnvHashMap::default();
 
-    for a in iter.filter(|a| a.species_id() != None) {
-        map.entry(a.species_id().unwrap()).or_insert(Vec::new()).push(a);
+    for (i, a) in iter.filter_map(|a| a.profession().species_id().map(|i| (i, a))) {
+        map.entry(i).or_insert(Vec::new()).push(a);
     }
 
     map
@@ -225,7 +234,7 @@ panic!("FOO");
 */
     let player_summaries = meta.agents()
                                .iter()
-                               .filter(|a| a.is_player_character())
+                               .filter(|a| a.profession().is_player_character())
                                .map(|a| PlayerSummary::new(&meta, a)
                                         // TODO: Is related to enough to get everything?
                                         .parse(&boss_ids[..], meta.encounter_events().related_to(a)))

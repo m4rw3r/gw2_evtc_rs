@@ -29,9 +29,9 @@ const skills = [
   { name: "Bite",  id: 12694, type: "Skill", icon: "https://wiki.guildwars2.com/images/c/c2/Bite_%28feline%29.png" },
   // Clone skills
   { name: "Echo of Memory", id: 31864, type: "Skill", icon: "https://render.guildwars2.com/file/2B05E7099BC15D3A55C90D33AEB6939204DB92EA/1012889.png" },
-  { name: "Mind Gash", id: 10298, type: "Skill", icon: "https://render.guildwars2.com/file/CFFAD1180816A86DC03156B431A0B22C703FEAE4/103189.png" },
-  { name: "Mind Slash", id: 10297, type: "Skill", icon: "https://render.guildwars2.com/file/58635B4F6E0264FC59BC80B73706EFB7DE0E9A34/103188.png" },
-  { name: "Mind Stab", id: 10299, type: "Skill", icon: "https://render.guildwars2.com/file/58635B4F6E0264FC59BC80B73706EFB7DE0E9A34/103188.png" },
+  { name: "Mind Gash", id: 10298, type: "Skill", slot: "Weapon_1", icon: "https://render.guildwars2.com/file/CFFAD1180816A86DC03156B431A0B22C703FEAE4/103189.png" },
+  { name: "Mind Slash", id: 10297, type: "Skill", slot: "Weapon_1", icon: "https://render.guildwars2.com/file/58635B4F6E0264FC59BC80B73706EFB7DE0E9A34/103188.png" },
+  { name: "Mind Stab", id: 10299, type: "Skill", slot: "Weapon_1", icon: "https://render.guildwars2.com/file/58635B4F6E0264FC59BC80B73706EFB7DE0E9A34/103188.png" },
   { name: "Leap", id: 10228, type: "Skill", icon: "https://render.guildwars2.com/file/D7202F9A1D73AAF4D478B892BDEE017AAFA93EFB/103722.png" },
   { name: "Winds of Chaos", id: 10296, type: "Skill", icon: "https://render.guildwars2.com/file/0C9C043BFFC0773E390D19462444ABEB02FD4C01/103100.png" },
   { name: "Mage Strike", id: 10217, type: "Skill", icon: "https://render.guildwars2.com/file/095CB8FCE947F9D538CAD84839B475F2EEAC4A0C/103746.png" },

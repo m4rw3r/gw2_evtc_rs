@@ -118,9 +118,17 @@ impl Agent {
         unsafe { str::from_utf8_unchecked(self.name.split(|&c| c == 0).nth(2).expect("Invalid C-string in EVTC Agent data")) }
     }
 
+    pub fn profession_inner(&self) -> u32 {
+        self.profession
+    }
+
     pub fn profession(&self) -> Profession {
         match (self.is_elite, self.profession) {
-            (0xFFFFFFFF, x)  => if x & 0xffff0000 == 0xffff0000 { Profession::Gadget } else { Profession::NonPlayableCharacter }
+            (0xFFFFFFFF, x)  => if x & 0xffff0000 == 0xffff0000 {
+                Profession::Gadget(SpeciesId((x & 0xffff) as u16))
+            } else {
+                Profession::NonPlayableCharacter(SpeciesId((x & 0xffff) as u16))
+            },
             (0, 1)           => Profession::Guardian,
             (0, 2)           => Profession::Warrior,
             (0, 3)           => Profession::Engineer,
@@ -152,6 +160,7 @@ impl Agent {
         }
     }
 
+/*
     /// If the agent is a non-playable-character (NPC) then this method will return
     /// its species id.
     #[inline]
@@ -161,7 +170,7 @@ impl Agent {
             (0xffffffff, _)          => Some(SpeciesId::new((self.profession & 0xffff) as u16)),
             _                        => None,
         }
-    }
+    }*/
 }
 
 /// Skill id and name.

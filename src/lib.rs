@@ -138,8 +138,8 @@ impl SpeciesId {
 /// The type of profession, includes NPCs and Gadgets
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize)]
 pub enum Profession {
-    Gadget,
-    NonPlayableCharacter,
+    Gadget(SpeciesId),
+    NonPlayableCharacter(SpeciesId),
     // Base professions
     Guardian,
     Warrior,
@@ -198,6 +198,40 @@ impl Profession {
             Profession::Reaper       => Profession::Necromancer,
             Profession::Scourge      => Profession::Necromancer,
             x => x,
+        }
+    }
+
+    #[inline]
+    pub fn is_npc(&self) -> bool {
+        match self {
+            Profession::NonPlayableCharacter(_) => true,
+            _                                   => false,
+        }
+    }
+
+    #[inline]
+    pub fn is_gadget(&self) -> bool {
+        match self {
+            Profession::Gadget(_) => true,
+            _                     => false,
+        }
+    }
+
+    #[inline]
+    pub fn is_player_character(&self) -> bool {
+        match self {
+            Profession::Gadget(_) |
+              Profession::NonPlayableCharacter(_) => false,
+            _ => true,
+        }
+    }
+
+    #[inline(always)]
+    pub fn species_id(&self) -> Option<SpeciesId> {
+        match self {
+            Profession::NonPlayableCharacter(id) => Some(*id),
+            Profession::Gadget(id)               => Some(*id),
+            _                                    => None,
         }
     }
 }

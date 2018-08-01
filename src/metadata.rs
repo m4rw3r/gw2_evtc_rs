@@ -1,7 +1,8 @@
+use event::Buff;
 use event::Event;
-use event::Source;
 use event::Meta;
 use event::MetaEventData;
+use event::Source;
 use event::StateChange;
 
 use fnv::FnvHashMap;
@@ -78,19 +79,6 @@ impl Agent {
         self.inner.profession()
     }
 
-    #[inline(always)]
-    pub fn species_id(&self) -> Option<SpeciesId> {
-        self.inner.species_id()
-    }
-
-    #[inline]
-    pub fn is_player_character(&self) -> bool {
-        match self.inner.profession() {
-            Profession::Gadget | Profession::NonPlayableCharacter => false,
-            _ => true,
-        }
-    }
-
     /// Returns the time of death if the agent died during the encounter
     #[inline(always)]
     pub fn died(&self) -> Option<u64> {
@@ -119,13 +107,12 @@ impl Serialize for Agent {
       where S: Serializer {
         use serde::ser::SerializeMap;
 
-        let mut map = serializer.serialize_map(Some(14))?;
+        let mut map = serializer.serialize_map(Some(13))?;
 
         map.serialize_entry("name",          self.name())?;
         map.serialize_entry("accountName",   self.account_name())?;
         map.serialize_entry("subgroup",      self.subgroup())?;
-        map.serialize_entry("isPlayer",      &self.is_player_character())?;
-        map.serialize_entry("speciesId",     &self.species_id())?;
+        map.serialize_entry("speciesId",     &self.profession().species_id())?;
         map.serialize_entry("profession",    &self.profession())?;
         map.serialize_entry("toughness",     &{self.inner.toughness})?;
         map.serialize_entry("concentration", &{self.inner.concentration})?;
@@ -172,6 +159,14 @@ impl Default for AgentMetadata {
     }
 }
 
+const EXTRA_BOSS_IDS: &'static [(SpeciesId, Profession)] = &[
+    // Xera:
+    (SpeciesId(16246), Profession::NonPlayableCharacter(SpeciesId(16286))),
+    // Deimos:
+    (SpeciesId(17154), Profession::Gadget(SpeciesId(8467))),
+    (SpeciesId(17154), Profession::Gadget(SpeciesId(8471))),
+];
+
 #[derive(Debug)]
 pub struct Metadata<'a> {
     buffer: &'a EvtcBuf<'a>,
@@ -205,7 +200,13 @@ impl<'a> Metadata<'a> {
         }
 
         for e in buffer.events.iter().filter_map(Event::into_source) {
-            let master_agent = e.master_instance().and_then(|i| map.iter().find(|(_id, m)| m.instid == i).map(|(&id, _)| id));
+            let master_agent = e.master_instance()
+                                .and_then(|i| map.iter().find(|(_id, m)| m.instid == i).map(|(&id, _)| id));
+            if let Some(_) = e.master_instance() {
+                if let None = master_agent {
+                    panic!("{:?} {:?}", e, map.iter().map(|(_, a)| a.instid).collect::<Vec<_>>());
+                }
+            }
 
             let mut meta = map.entry(e.agent()).or_insert(AgentMetadata {
                 instid:        InstanceId::empty(),
@@ -219,18 +220,27 @@ impl<'a> Metadata<'a> {
 
             match e.state_change() {
                 Some(StateChange::EnterCombat(_)) |
+                  Some(StateChange::MaxHealthUpdate(_)) |
                   Some(StateChange::Spawn)     => meta.instid = e.instance(),
                 Some(StateChange::PointOfView) => meta.is_pov = true,
                 // TODO: For players, revert this if death is after *all* of the boss deaths
                 Some(StateChange::ChangeDead)  => meta.died   = Some(e.time()),
-                // Xera?
+                // Xera
                 // Second one
                 Some(StateChange::Despawn)     => meta.died   = Some(e.time()),
-                // First one becomes invulnerable using a skill
-                // FIXME
-                //StateChange::WithTarget { event: TargetEvent::Buff(762, _), .. } => meta.died = Some(e.time()),
-                //StateChange::WithTarget { event: TargetEvent::Buff(34113, _), .. } => meta.died = Some(e.time()),
-                _                              => {},
+                _                              => if meta.instid == InstanceId::empty() {
+                    // FIXME: This seems to be a bit heavy-handed, sometimes EnterCombat and the like do not happen
+                    meta.instid = e.instance();
+                },
+            }
+
+            if let Some(b) = e.clone().into_buff() {
+                match b.skill() {
+                    // Xera: First one becomes invulnerable using a skill
+                    762   => meta.died = Some(e.time()),
+                    34113 => meta.died = Some(e.time()),
+                    _     => {},
+                }
             }
 
             meta.last_aware = e.time();
@@ -263,9 +273,10 @@ impl<'a> Metadata<'a> {
     pub fn bosses(&self) -> impl Iterator<Item=&Agent> {
         let boss_id = self.buffer.header.boss_id;
 
-        self.agents.iter().filter(move |a| a.species_id() == Some(boss_id) ||
-            // Xera:
-            boss_id == SpeciesId::new(16246) && a.species_id() == Some(SpeciesId::new(16286)))
+        self.agents.iter().filter(move |a| a.profession() == Profession::NonPlayableCharacter(boss_id) ||
+            EXTRA_BOSS_IDS.iter()
+                          .map(|(id, other)| if boss_id == *id { *other == a.profession() } else { false })
+                          .fold(false, |a, b| a || b))
     }
 
     pub fn boss(&self) -> Boss {
