@@ -16,6 +16,29 @@ const skills = [
   { name: "Taunt", id: 46996, type: "Boon", boonStack: "Duration", maxStacks: 5, boonType: "Condition", icon: "https://wiki.guildwars2.com/images/thumb/c/cc/Taunt.png/20px-Taunt.png" },
   { name: "Vulnerability", id: 738, type: "Boon", boonStack: "Intensity", maxStacks: 25, boonType: "Condition", icon: "https://wiki.guildwars2.com/images/thumb/a/af/Vulnerability.png/20px-Vulnerability.png" },
   { name: "Retaliation", id: 873, type: "Boon", boonStack: "Duration", maxStacks: 5, boonType: "Condition", icon: "https://wiki.guildwars2.com/images/5/53/Retaliation.png" },
+  // Unlisted skills
+  // Damage from One Wolf Pack
+  { name: "One Wolf Pack", id: 42145, type: "Skill", icon: "https://render.guildwars2.com/file/4E137B09B5CC545211977BFDCEC76119195AC7C9/1770558.png" },
+  { name: "Fiery Rush", id: 5663, type: "Skill", icon: "https://render.guildwars2.com/file/D7051607F7726AE1C3E4B80FE7F316244C075C0F/103329.png" },
+  // Sigil effects
+  { name: "Ring of Earth", id: 9433, type: "Sigil", icon: "https://wiki.guildwars2.com/images/4/43/Superior_Sigil_of_Geomancy.png" },
+  { name: "Lightning Strike", id: 9292, type: "Sigil", icon: "https://wiki.guildwars2.com/images/c/c3/Superior_Sigil_of_Air.png" },
+  // Pet skills
+  { name: "Slash", id: 12655, type: "Skill", icon: "https://wiki.guildwars2.com/images/c/c3/Maul_%28feline%29.png" },
+  { name: "Maul",  id: 12657, type: "Skill", icon: "https://wiki.guildwars2.com/images/c/c3/Maul_%28feline%29.png" },
+  { name: "Bite",  id: 12694, type: "Skill", icon: "https://wiki.guildwars2.com/images/c/c2/Bite_%28feline%29.png" },
+  // Clone skills
+  { name: "Echo of Memory", id: 31864, type: "Skill", icon: "https://render.guildwars2.com/file/2B05E7099BC15D3A55C90D33AEB6939204DB92EA/1012889.png" },
+  { name: "Mind Gash", id: 10298, type: "Skill", icon: "https://render.guildwars2.com/file/CFFAD1180816A86DC03156B431A0B22C703FEAE4/103189.png" },
+  { name: "Mind Slash", id: 10297, type: "Skill", icon: "https://render.guildwars2.com/file/58635B4F6E0264FC59BC80B73706EFB7DE0E9A34/103188.png" },
+  { name: "Mind Stab", id: 10299, type: "Skill", icon: "https://render.guildwars2.com/file/58635B4F6E0264FC59BC80B73706EFB7DE0E9A34/103188.png" },
+  { name: "Leap", id: 10228, type: "Skill", icon: "https://render.guildwars2.com/file/D7202F9A1D73AAF4D478B892BDEE017AAFA93EFB/103722.png" },
+  { name: "Winds of Chaos", id: 10296, type: "Skill", icon: "https://render.guildwars2.com/file/0C9C043BFFC0773E390D19462444ABEB02FD4C01/103100.png" },
+  { name: "Mage Strike", id: 10217, type: "Skill", icon: "https://render.guildwars2.com/file/095CB8FCE947F9D538CAD84839B475F2EEAC4A0C/103746.png" },
+  { name: "Blurred Frenzy", id: 49067, type: "Skill", icon: "https://render.guildwars2.com/file/070633A302DA4865605316D1AF32DE40033CC0FE/103790.png" },
+  { name: "Illusionary Sword Attack", id: 10230, type: "Skill", icon: "https://render.guildwars2.com/file/755CAC115104F0AA0630DCEB472D0678B62A916E/103723.png" },
+  // Non-skills
+  { name: "Dodge", id: 65001, type: "Dodge", icon: "https://wiki.guildwars2.com/images/c/cc/Dodge_Instructor.png" },
   // TODO: More stuff
 ];
 const skillData = {};
