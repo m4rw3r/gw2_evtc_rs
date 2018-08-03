@@ -439,7 +439,7 @@ $visibility mod $module {
         }
 
         pub fn snapshots<'a>(&'a self) -> impl Iterator<Item=(u16, BuffSnapshot)> + 'a {
-            self.map.iter().map(|(&k, v)| (k, BuffSnapshot {
+            self.map.iter().filter(|(_, v)| v.stacks() > 0).map(|(&k, v)| (k, BuffSnapshot {
                 stacks:    v.stacks(),
                 sum:       v.sum(),
                 uptime:    v.uptime(),

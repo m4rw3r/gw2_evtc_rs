@@ -9,6 +9,7 @@ mod iterator;
 pub mod event;
 pub mod statistics;
 pub mod buff;
+pub mod timeseries;
 
 pub use event::*;
 

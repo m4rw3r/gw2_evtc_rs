@@ -12,9 +12,13 @@ use evtc::Metadata;
 use evtc::SkillList;
 use evtc::SpeciesId;
 use evtc::TimeSeries;
+use evtc::timeseries::Series;
+use evtc::timeseries::Entry;
 use evtc::buff::MetadataMap;
+use evtc::buff::BuffSnapshot;
 use evtc::buff::table as buffs;
 use evtc::event::Source;
+use evtc::event::StateChange;
 use evtc::event::raw::CombatEventV1;
 use evtc::raw;
 use evtc::statistics::Abilities;
@@ -83,6 +87,32 @@ impl<'a> AgentStatistics<'a> {
     }
 }
 
+#[derive(Default, Serialize)]
+struct TimeEntry {
+    time:        u64,
+    buffs:       Option<FnvHashMap<u16, BuffSnapshot>>,
+    health:      Option<u64>,
+    damage:      i64,
+    boss_dmg:    i64,
+    downed:      bool,
+    revived:     bool,
+    dead:        bool,
+    weapon_swap: bool,
+}
+
+impl Entry for TimeEntry {
+    fn new(time: u64) -> Self {
+        Self {
+            time,
+            ..Default::default()
+        }
+    }
+
+    fn time(&self) -> u64 {
+        self.time
+    }
+}
+
 #[derive(Serialize)]
 struct PlayerSummary<'a, E: Event> {
     agent:              &'a Agent,
@@ -96,7 +126,7 @@ struct PlayerSummary<'a, E: Event> {
     buffs:              buffs::Map<E::BuffEvent>,
     #[serde(rename="incomingDamage")]
     incoming_damage:    AbilityAndTotal,
-    series:             TimeSeries,
+    series:             Series<TimeEntry>,
 }
 
 impl<'a, E: Source> PlayerSummary<'a, E> {
@@ -114,7 +144,7 @@ impl<'a, E: Source> PlayerSummary<'a, E> {
             activation_log:  Default::default(),
             incoming_damage: Default::default(),
             buffs:           buffs::Map::new(agent.id()),
-            series:          TimeSeries::new(meta),
+            series:          Series::new(meta),
         }
     }
 
@@ -122,33 +152,59 @@ impl<'a, E: Source> PlayerSummary<'a, E> {
     fn parse<I: Iterator<Item=E>>(mut self, bosses: &[AgentId], i: I) -> Self {
         let mut t = 0;
 
-        for e in i {
-            if e.time() != t {
-                self.buffs.update(e.time());
+        for event in i {
+            // We only store entries per second
+            let entry = self.series.current(event.time() / 1000);
 
-                t = e.time();
+            if event.time() != t {
+                self.buffs.update(event.time());
+
+                t = event.time();
             }
 
-            if let Some(b) = e.clone().into_buff() {
-                self.buffs.add_event(b);
+            // Snapshot buffs
+            if entry.buffs.is_none() {
+                entry.buffs = Some(self.buffs.snapshots().collect());
             }
 
-            if let Some(e) = e.clone().targeting_agent(self.agent.id()) {
-                if let Some(d) = e.into_damage() {
-                    self.incoming_damage.add_event(d);
+            // Parse
+            if let Some(state) = event.state_change() {
+                match state {
+                    StateChange::ChangeDown      => entry.downed      = true,
+                    StateChange::ChangeUp        => entry.revived     = true,
+                    // Got to check if it is a minion which died
+                    StateChange::ChangeDead if event.master_instance().is_none() => entry.dead        = true,
+                    StateChange::HealthUpdate(h) => entry.health      = Some(h),
+                    StateChange::WeaponSwap      => entry.weapon_swap = true,
+                    _ => {},
                 }
             }
 
-            if let Some(e) = e.clone()
+            if let Some(b) = event.clone().into_buff() {
+                self.buffs.add_event(b);
+            }
+
+            if let Some(e) = event.clone()
+                                  .targeting_agent(self.agent.id())
+                                  .and_then(Event::into_damage) {
+                self.incoming_damage.add_event(e);
+            }
+
+            if let Some(e) = event.clone()
                               .from_agent_or_gadgets(self.agent.id(), self.agent.instance_id()) {
                 self.activation_log.add_event(e.clone());
 
                 if let Some(d) = e.clone()
-                                .into_damage() {
+                                  .into_damage() {
                     self.hit_stats.add_event(d.clone());
 
-                    if let Some(b) = d.clone().targeting_any_of(bosses.iter().cloned()) {
+                    entry.damage += d.damage();
+
+                    if let Some(b) = d.clone()
+                                      .targeting_any_of(bosses.iter().cloned()) {
                         self.boss_hit_stats.add_event(b.clone());
+
+                        entry.boss_dmg += b.damage();
 
                         for a in &mut self.agents {
                             if a.agent_ids.contains(&e.agent()) {
@@ -157,10 +213,10 @@ impl<'a, E: Source> PlayerSummary<'a, E> {
                         }
                     }
                 }
-
-                // TODO: Series
             }
         }
+
+        self.series.finalize();
 
         self
     }
@@ -205,6 +261,7 @@ fn group_agents_by_species<'a, I: Iterator<Item=&'a Agent>>(iter: I) -> FnvHashM
     for (i, a) in iter.filter_map(|a| a.profession().species_id().map(|i| (i, a))) {
         map.entry(i).or_insert(Vec::new()).push(a);
     }
+
 
     map
 }
