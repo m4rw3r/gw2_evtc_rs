@@ -21,6 +21,12 @@
   * [ ] Times downed
   * [ ] Dead with time (and percent of fight)
   * [x] Summary for group and squad
+* [ ] Phases
+  * [ ] One phase is "Whole encounter"
+  * [ ] Duplicate all statistics for this
+  * [ ] Enable a sliding-window with variable size for some of the stats
+  * [ ] Show player position when using the sliding window
+  * [ ] Show phases in the graph (different background, highlight selected part if not full encounter)
 * [ ] Boon- and buff-summary
   * [ ] Boon-uptime
   * [ ] Buff-uptime
@@ -49,6 +55,7 @@
   * [ ] Phase-selection limits displayed graph
   * [ ] Boss HP
   * [ ] Fulltime boss-dps
+  * [ ] Boss HP
   * [ ] 10s DPS
 * [x] JSON-output
 * [ ] HTML-output with graphs
