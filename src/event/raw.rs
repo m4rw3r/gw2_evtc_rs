@@ -159,18 +159,6 @@ impl Agent {
             _                => Profession::Unknown,
         }
     }
-
-/*
-    /// If the agent is a non-playable-character (NPC) then this method will return
-    /// its species id.
-    #[inline]
-    pub fn species_id(&self) -> Option<SpeciesId> {
-        match (self.is_elite, self.profession & 0xffff0000) {
-            (0xffffffff, 0xffff0000) => None,
-            (0xffffffff, _)          => Some(SpeciesId::new((self.profession & 0xffff) as u16)),
-            _                        => None,
-        }
-    }*/
 }
 
 /// Skill id and name.

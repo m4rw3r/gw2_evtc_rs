@@ -202,11 +202,6 @@ impl<'a> Metadata<'a> {
         for e in buffer.events.iter().filter_map(Event::into_source) {
             let master_agent = e.master_instance()
                                 .and_then(|i| map.iter().find(|(_id, m)| m.instid == i).map(|(&id, _)| id));
-            if let Some(_) = e.master_instance() {
-                if let None = master_agent {
-                    panic!("{:?} {:?}", e, map.iter().map(|(_, a)| a.instid).collect::<Vec<_>>());
-                }
-            }
 
             let mut meta = map.entry(e.agent()).or_insert(AgentMetadata {
                 instid:        InstanceId::empty(),
@@ -219,9 +214,9 @@ impl<'a> Metadata<'a> {
             });
 
             match e.state_change() {
-                Some(StateChange::EnterCombat(_)) |
-                  Some(StateChange::MaxHealthUpdate(_)) |
-                  Some(StateChange::Spawn)     => meta.instid = e.instance(),
+                Some(StateChange::EnterCombat(_))
+                | Some(StateChange::MaxHealthUpdate(_))
+                | Some(StateChange::Spawn)     => meta.instid = e.instance(),
                 Some(StateChange::PointOfView) => meta.is_pov = true,
                 // TODO: For players, revert this if death is after *all* of the boss deaths
                 Some(StateChange::ChangeDead)  => meta.died   = Some(e.time()),

@@ -20,6 +20,7 @@ use std::borrow::Cow;
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::Write;
+use std::error::Error;
 
 use zip::ZipArchive;
 
@@ -54,23 +55,7 @@ fn main() {
         .into_owned();
     let file    = File::open(&name).expect("could not open file");
     let mut out = BufWriter::new(File::create(&out_name).expect("Coult not create file"));
-
-    if ! is_json {
-        out.write(&b"<html>
-  <head>
-    <meta charset=\"utf-8\" />
-    <style>"[..]).unwrap();
-        out.write(CSS).unwrap();
-        out.write(&b"</style>
-  </head>
-  <body>
-    <div id=\"main\"></div>
-    <script type=\"text/javascript\">"[..]).unwrap();
-        out.write(JS).unwrap();
-        out.write(&b"
-
-var evtc_data = "[..]).unwrap();
-    }
+    let pretty  = matches.occurrences_of("pretty") > 0;
 
     if name.ends_with(".zip") {
         use std::io::Read;
@@ -81,19 +66,46 @@ var evtc_data = "[..]).unwrap();
 
         file.read_to_end(&mut buffer).expect("Failed to read first file in arcive");
 
-        json::parse_data(&buffer[..], name, matches.occurrences_of("pretty") > 0, &mut out).unwrap();
+        if is_json {
+            json::parse_data(&buffer[..], name, pretty, out).unwrap();
+        }
+        else {
+            wrap_html(&mut out, |out| json::parse_data(&buffer[..], name, pretty, out)).unwrap();
+        }
     }
     else {
         let mmap = unsafe { memmap::Mmap::map(&file).expect("Failed to mmap() file") };
 
-        json::parse_data(&mmap[..], name, matches.occurrences_of("pretty") > 0, &mut out).unwrap();
+        if is_json {
+            json::parse_data(&mmap[..], name, pretty, out).unwrap();
+        }
+        else {
+            wrap_html(&mut out, |out| json::parse_data(&mmap[..], name, pretty, out)).unwrap();
+        }
     }
+}
 
-    if ! is_json {
-        out.write(&b";
+fn wrap_html<'a, W: Write, E: Error + 'static, F: FnOnce(&mut W) -> Result<(), E>>(out: &'a mut W, f: F) -> Result<usize, Box<Error>> {
+    out.write(&b"<html>
+  <head>
+    <meta charset=\"utf-8\" />
+    <style>"[..])?;
+    out.write(CSS)?;
+    out.write(&b"</style>
+  </head>
+  <body>
+    <div id=\"main\"></div>
+    <script type=\"text/javascript\">"[..])?;
+    out.write(JS)?;
+    out.write(&b"
+
+var evtc_data = "[..])?;
+
+    f(out)?;
+
+    out.write(&b";
 evtc_rs(evtc_data, document.getElementById(\"main\"));
 </script>
   </body>
-</html>"[..]).unwrap();
-    }
+</html>"[..]).map_err(From::from)
 }
