@@ -52,7 +52,8 @@ export default function(props) { return ${
             "browsers": "last 2 versions"
           },
           "exclude": [ "transform-typeof-symbol" ]
-        }]
+        }],
+        ["@babel/preset-flow"],
       ],
       plugins: [
         ["@babel/plugin-syntax-jsx"],
@@ -112,7 +113,7 @@ export default function(props) { return ${
       }
     }),
     gzip({
-      options: {
+      gzipOptions: {
         level: 9
       }
     })

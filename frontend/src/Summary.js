@@ -6,11 +6,45 @@ import Profession from "./icons/Profession";
 import Graph      from "./Graph";
 import { groupBy } from "./util";
 
-export default class Summary extends Component {
-  render({ encounter, players, enemies }, _, { encounter: { duration }, boss: { duration: bossDuration }, format: { dps, percent, damage, number } }) {
-    const totalDamage = ({ power, condi }) => power.totalDamage + condi.totalDamage;
+const totalDamage = ({ power, condi }) => power.totalDamage + condi.totalDamage;
+const reverseSort = (func) => {
+  let reversed = (a, b) => func(b, a);
 
-    const Player        = ({ agent, bossHits, hits }) => <tr>
+  reversed.func = func;
+
+  return reversed;
+};
+const nameSort     = ({ agent: { name: a } }, { agent: { name: b } }) => a.localeCompare(b);
+const groupSort    = ({ agent: { subgroup: a } }, { agent: { subgroup: b } }) => a.localeCompare(b);
+const bossDpsSort  = ({ bossHits: a }, { bossHits: b }) => totalDamage(b) - totalDamage(a);
+const dpsSort      = ({ hits: a }, { hits: b }) => totalDamage(b) - totalDamage(a);
+const incomingSort = ({ incomingDamage: { totalDamage: a } }, { incomingDamage: { totalDamage: b } }) => b - a;
+const scholarSort  = ({ hits: { power: { scholar: aScholar, hits: aHits } } }, { hits: { power: { scholar: bScholar, hits: bHits } } }) => (bScholar / bHits) - (aScholar / aHits);
+
+export default class Summary extends Component {
+  constructor(props) {
+    super(props);
+
+    this.state = {
+      sort: bossDpsSort,
+    };
+  }
+
+  setSort(func) {
+    if(this.state.sort === func) {
+      this.setState({
+        sort: reverseSort(func),
+      });
+    }
+    else {
+      this.setState({
+        sort: func,
+      });
+    }
+  }
+
+  render({ encounter, players, enemies }, { sort }, { encounter: { duration }, boss: { duration: bossDuration }, format: { dps, percent, damage, number } }) {
+    const Player = ({ agent, bossHits, hits }) => <tr>
       <td class="icon"><Profession profession={agent.profession} /></td>
       <td class="name">{agent.name}</td>
       <td class="subgroup">{agent.subgroup}</td>
@@ -59,7 +93,7 @@ export default class Summary extends Component {
       <td></td>
     </tr>;
 
-    const sorted  = players.slice().sort(({ bossHits: a }, { bossHits: b }) => totalDamage(b) - totalDamage(a));
+    const sorted  = players.slice().sort(sort);
     const grouped = groupBy(sorted, ({ agent: { subgroup }}) => subgroup);
 
     return <div class="summary">
@@ -67,22 +101,21 @@ export default class Summary extends Component {
         <table>
         <tr>
           <th></th>
-          <th class="name">Name</th>
-          <th class="subgroup">Group</th>
-          <th class="dps" colspan="3">Boss DPS</th>
-          <th class="dps" colspan="3">All DPS</th>
-          <th class="scholar" colspan="2">Scholar</th>
-
+          <th class={[sort, sort.func].indexOf(nameSort) !== -1    ? "selected" : ""} onClick={() => this.setSort(nameSort)}>Name</th>
+          <th class={[sort, sort.func].indexOf(groupSort) !== -1   ? "selected" : ""} onClick={() => this.setSort(groupSort)}>Group</th>
+          <th class={[sort, sort.func].indexOf(bossDpsSort) !== -1 ? "selected" : ""} colspan="3" onClick={() => this.setSort(bossDpsSort)}>Boss DPS</th>
+          <th class={[sort, sort.func].indexOf(dpsSort) !== -1     ? "selected" : ""} colspan="3" onClick={() => this.setSort(dpsSort)}>All DPS</th>
+          <th class={[sort, sort.func].indexOf(scholarSort) !== -1 ? "selected" : ""} colspan="2" onClick={() => this.setSort(scholarSort)}>Scholar</th>
         </tr>
         <tr class="subheading">
           <th colspan="3"></th>
-          <th>All</th>
+          <th class={[sort, sort.func].indexOf(bossDpsSort) !== -1 ? "selected" : ""} onClick={() => this.setSort(bossDpsSort)}>All</th>
           <th>Power</th>
           <th>Condi</th>
-          <th>All</th>
+          <th class={[sort, sort.func].indexOf(dpsSort) !== -1 ? "selected" : ""} onClick={() => this.setSort(dpsSort)}>All</th>
           <th>Power</th>
           <th>Condi</th>
-          <th>Boss</th>
+          <th class={[sort, sort.func].indexOf(scholarSort) !== -1 ? "selected" : ""} onClick={() => this.setSort(scholarSort)}>Boss</th>
           <th>All</th>
         </tr>
         {sorted.map(Player)}
