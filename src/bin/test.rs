@@ -18,6 +18,7 @@ use regex::Regex;
 
 use std::borrow::Cow;
 use std::fs::File;
+use std::io::BufWriter;
 use std::io::Write;
 
 use zip::ZipArchive;
@@ -52,7 +53,7 @@ fn main() {
         .unwrap_or_else(|| Regex::new("\\.evtc(?:\\.zip)?$").unwrap().replace(&name, if is_json { ".json" } else { ".html" }))
         .into_owned();
     let file    = File::open(&name).expect("could not open file");
-    let mut out = File::create(&out_name).expect("Coult not create file");
+    let mut out = BufWriter::new(File::create(&out_name).expect("Coult not create file"));
 
     if ! is_json {
         out.write(&b"<html>
