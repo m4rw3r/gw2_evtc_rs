@@ -327,6 +327,7 @@ pub enum BuffType {
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct BuffMeta {
     pub name:     &'static str,
+    #[serde(rename="skillId")]
     pub skill_id: u16,
     // TODO: Friendly/hostile, offensive/defensive and so on
 }
