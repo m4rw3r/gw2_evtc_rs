@@ -7,6 +7,8 @@ import { min, max } from "d3-array";
 import { scaleLinear }   from "d3-scale";
 import { line }     from "d3-shape";
 
+const PADDING_DEFAULT = 20;
+
 const fst  = ([x, _]) => x;
 const snd  = ([_, x]) => x;
 const time = ({ time })   => time;
@@ -54,7 +56,7 @@ export const DPSGraph = ({ series, x, start, end, xScale, yScale, ...rest }) => 
   return <path d={lineGraph(series)} {...rest} />
 }
 
-export const GroupedGraphs = ({ children, padding, width, height, start, end, x: _, xScale, yScale, ...rest }) => {
+export const GroupedGraphs = ({ mouseX, children, padding, width, height, start, end, x: _, xScale, yScale, ...rest }) => {
   const allSeries = children.map(c => c.attributes && c.attributes.series ? c.attributes.series : []);
   const x         = n => xScale(fst(n));
 
@@ -83,7 +85,7 @@ export class Axis extends Component {
 }
 
 export class TimeAxis extends Component {
-  render({ xScale, height, padding, yScale: _y, width: _w, start: _s, end: _e, ...rest }, _, { format: { time } }) {
+  render({ xScale, height, padding, mouseX, yScale: _y, width: _w, start: _s, end: _e, ...rest }, _, { format: { time } }) {
     const range  = xScale.ticks();
     const domain = xScale.domain();
     const half   = padding / 2;
@@ -146,14 +148,41 @@ export class ResponsiveGraph extends Component {
 }
 
 export class Graph extends Component {
-  render({ start, end, width, height, padding=20, children, ...rest }) {
+  constructor(props) {
+    super(props);
+
+    this.state = {
+      mouseX: null,
+    };
+    this.mouseleave = this.mouseleave.bind(this);
+    this.mousemove  = this.mousemove.bind(this);
+  }
+  mousemove(e) {
+    const { left, top } = this.base.getBoundingClientRect();
+    const padding = this.props.padding || PADDING_DEFAULT;
+
+    const coords = {
+      x: Math.min(this.props.width - padding, Math.max(e.clientX - left - padding, 0)),
+      y: Math.min(this.props.height - padding, Math.max(e.clientY - top + padding, 0))
+    };
+
+    this.setState({
+      mouseX: x,
+    });
+  }
+  mouseleave() {
+    this.setState({
+      mouseX: null,
+    });
+  }
+  render({ start, end, width, height, padding=PADDING_DEFAULT, children, ...rest }, { mouseX }) {
     // TODO: Filter based on start/end values of time
     const xScale = scaleLinear().domain([start|0, Math.ceil(end)]).range([padding, width - padding]);
     const x      = n => xScale(time(n));
     const yScale = scaleLinear().range([padding, height - padding]);
 
-    return <svg {...rest} width={width} height={height}>
-      {children.map(c => cloneElement(c, { padding, width, height, start, end, x, xScale, yScale: yScale.copy() }))}
+    return <svg {...rest} width={width} height={height} onMouseMove={this.mousemove} onMouseLeave={this.mouseleave}>
+      {children.map(c => cloneElement(c, { mouseX, padding, width, height, start, end, x, xScale, yScale: yScale.copy() }))}
     </svg>;
   }
 }
