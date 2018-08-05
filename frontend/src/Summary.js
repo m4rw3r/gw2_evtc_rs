@@ -6,10 +6,13 @@ import Profession      from "./icons/Profession";
 import { damageSeries
        , bossDmgSeries
        , fulltimeAvg
+       , Axis
+       , TimeAxis
        , Graph
        , HealthGraph
        , DPSGraph
        , GroupedGraphs
+       , ResponsiveGraph
        } from "./Graph";
 import { groupBy }     from "./util";
 
@@ -51,6 +54,49 @@ const scholarBossSort = (a, b) => scholarUptime(bossHits(b)) - scholarUptime(bos
 const downedSort      = (a, b) => downed(b).length - downed(a).length;
 
 const seconds = time => (time / 1000).toFixed(2);
+
+const professionColour = ({ profession }) => {
+  switch(profession) {
+  case "Dragonhunter":
+  case "Firebrand":
+  case "Guardian":
+    return "#72C1D9";
+  case "Revenant":
+  case "Herald":
+  case "Renegade":
+    return "#D16E5A";
+  case "Warrior":
+  case "Spellbreaker":
+  case "Berserker":
+    return "#FFD166";
+  case "Engineer":
+  case "Scrapper":
+  case "Holosmith":
+    return "#D09C59";
+  case "Ranger":
+  case "Druid":
+  case "Soulbeast":
+    return "#8CDC82";
+  case "Thief":
+  case "Daredevil":
+  case "Deadeye":
+    return "#C08F95";
+  case "Elementalist":
+  case "Tempest":
+  case "Weaver":
+    return "#F68A87";
+  case "Mesmer":
+  case "Chronomancer":
+  case "Mirage":
+    return "#B679D5";
+  case "Necromancer":
+  case "Reaper":
+  case "Scourge":
+    return "#52A76F";
+  default:
+    return "#BBBBBB";
+  }
+}
 
 export default class Summary extends Component {
   constructor(props) {
@@ -156,13 +202,17 @@ export default class Summary extends Component {
       onClick={() => this.setSort(sortFn)}>{children}</th>;
 
     return <div class="summary">
-        <Graph class="graph" start={encounter.seriesStart / 1000} end={encounter.seriesEnd / 1000} width="1000" height="300">
-          <HealthGraph class="line" series={[].concat.apply([], enemies.map(e => e.series))} />
-          <GroupedGraphs>
-            {/*players.map(p => <DPSGraph class="line" series={damageSeries(p.series)} />)*/}
-            {players.map(p => <DPSGraph class="line" series={fulltimeAvg(bossDmgSeries(p.series), encounter.seriesStart / 1000)} />)}
-          </GroupedGraphs>
-        </Graph>
+        <ResponsiveGraph class="graph">
+          <Graph start={encounter.seriesStart / 1000} end={encounter.seriesEnd / 1000} width="1500" height="300">
+            <TimeAxis class="time-axis" />
+            <HealthGraph class="line" style={{ stroke: "#FFCC66", "stroke-dasharray": 5 }} series={[].concat.apply([], enemies.map(e => e.series))} />
+            <GroupedGraphs>
+              <Axis format={damage} class="damage-axis" />
+              {/*players.map(p => <DPSGraph class="line" series={damageSeries(p.series)} />)*/}
+              {players.map(p => <DPSGraph class="line" style={{ stroke: professionColour(p.agent) }} series={fulltimeAvg(bossDmgSeries(p.series), encounter.seriesStart / 1000)} />)}
+            </GroupedGraphs>
+          </Graph>
+        </ResponsiveGraph>
         <table>
         <tr>
           <th></th>

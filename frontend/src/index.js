@@ -54,11 +54,11 @@ class App extends Component<Data> {
     const firstHpActivity = enemies.reduce((a, b) => Math.min(firstHpEvent(b) * 1000, a), Number.MAX_SAFE_INTEGER) - 1;
     const bossDuration    = (end - firstHpActivity);
 
-    const time = timestamp => {
+    const time = (timestamp, precision=1) => {
       timestamp -= start;
       timestamp /= 1000;
 
-      return `${(timestamp / 60)|0}:${(timestamp % 60).toFixed(1)}`;
+      return `${(timestamp / 60)|0}:${("00" + (timestamp % 60).toFixed(precision)).slice(-2)}`;
     };
     const number  = value => value.toLocaleString();
     const dps     = total => number(Math.round(total / duration * 1000));
