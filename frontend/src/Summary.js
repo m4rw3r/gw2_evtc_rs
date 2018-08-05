@@ -137,7 +137,7 @@ export default class Summary extends Component {
       <td class="number secondary" title={`${player.hits.power.criticals} / ${player.hits.power.hits}`}>{percent(critRate(hits(player)))}</td>
       <td class="number" title={`${player.bossHits.power.scholar} / ${player.bossHits.power.hits}`}>{percent(scholarUptime(bossHits(player)))}</td>
       <td class="number secondary" title={`${player.hits.power.scholar} / ${player.hits.power.hits}`}>{percent(scholarUptime(hits(player)))}</td>
-      <td class="number">{number(downed(player).length)}</td>
+      <td class="downed">{number(downed(player).length)}</td>
     </tr>;
 
     const groupTotal = agents => {
@@ -185,16 +185,6 @@ export default class Summary extends Component {
       <td></td>
     </tr>;
 
-    const firstHpEvent = ({ series }) => {
-      for(let i = 0; i < series.length; i++) {
-        if(series[i].health > 0) {
-          return series[i].time;
-        }
-      }
-
-      return Number.MAX_SAFE_INTEGER;
-    };
-    const firstEnemyHpActivity = enemies.reduce((a, b) => Math.min(firstHpEvent(b), a), Number.MAX_SAFE_INTEGER) - 1;
     const sorted  = players.slice().sort(sort);
     const grouped = groupBy(sorted, ({ agent: { subgroup }}) => subgroup);
     const TH = ({sortFn, children, ...rest }) => <th {...rest}
@@ -224,7 +214,7 @@ export default class Summary extends Component {
           <TH sortFn={wastedSort} title="Wasted time casting skills which got canceled">Wasted</TH>
           <TH sortFn={critBossSort} colspan="2" title="Percentage of hits which were critical hits">Crits</TH>
           <TH sortFn={scholarBossSort} colspan="2" title="Percentage of hits which potentially benefited from the >90% Scholar rune bonus">Scholar</TH>
-          <TH sortFn={downedSort} title="Number of times player got downed.">Downed</TH>
+          <TH sortFn={downedSort} title="Number of times player got downed."><span class="icon death"></span></TH>
         </tr>
         <tr class="subheading">
           <th colspan="3"></th>
