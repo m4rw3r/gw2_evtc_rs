@@ -2,11 +2,31 @@ import { h
        , Component
        } from "preact";
 
-import Profession from "./icons/Profession";
-import Graph      from "./Graph";
-import { groupBy } from "./util";
+import Profession      from "./icons/Profession";
+import { damageSeries
+       , bossDmgSeries
+       , fulltimeAvg
+       , Graph
+       , HealthGraph
+       , DPSGraph
+       , GroupedGraphs
+       } from "./Graph";
+import { groupBy }     from "./util";
 
-const totalDamage = ({ power, condi }) => power.totalDamage + condi.totalDamage;
+const agentName      = ({ agent: { name: a } })                 => a;
+const agentSubgroup  = ({ agent: { subgroup: a } })             => a;
+const bossHits       = ({ bossHits: a })                        => a;
+const hits           = ({ hits: a })                            => a;
+const powerDamage    = ({ power: { totalDamage: a } })          => a;
+const condiDamage    = ({ condi: { totalDamage: a } })          => a;
+const incomingDamage = ({ incomingDamage: { total: { totalDamage: a } } }) => a;
+const scholarUptime  = ({ power: { scholar, hits } })           => scholar / hits;
+const critRate       = ({ power: { criticals, hits } })         => criticals / hits;
+const totalDamage    = ({ power: { totalDamage: a }, condi: { totalDamage: b } }) => a + b;
+const downed         = ({ series }) => series.filter(e => e.downed);
+const wastedSkills   = ({ activationLog }) => activationLog.filter(e => e.canceled);
+const wastedTime     = (player)            => wastedSkills(player).reduce((a, e) => a + e.duration, 0);
+
 const reverseSort = (func) => {
   let reversed = (a, b) => func(b, a);
 
@@ -14,12 +34,23 @@ const reverseSort = (func) => {
 
   return reversed;
 };
-const nameSort     = ({ agent: { name: a } }, { agent: { name: b } }) => a.localeCompare(b);
-const groupSort    = ({ agent: { subgroup: a } }, { agent: { subgroup: b } }) => a.localeCompare(b);
-const bossDpsSort  = ({ bossHits: a }, { bossHits: b }) => totalDamage(b) - totalDamage(a);
-const dpsSort      = ({ hits: a }, { hits: b }) => totalDamage(b) - totalDamage(a);
-const incomingSort = ({ incomingDamage: { totalDamage: a } }, { incomingDamage: { totalDamage: b } }) => b - a;
-const scholarSort  = ({ hits: { power: { scholar: aScholar, hits: aHits } } }, { hits: { power: { scholar: bScholar, hits: bHits } } }) => (bScholar / bHits) - (aScholar / aHits);
+const nameSort        = (a, b) => agentName(a).localeCompare(agentName(b));
+const groupSort       = (a, b) => agentSubgroup(a).localeCompare(agentSubgroup(b));
+const bossDpsSort     = (a, b) => totalDamage(bossHits(b)) - totalDamage(bossHits(a));
+const bossPowerDps    = (a, b) => powerDamage(bossHits(b)) - powerDamage(bossHits(a));
+const bossCondiDps    = (a, b) => condiDamage(bossHits(b)) - condiDamage(bossHits(a));
+const dpsSort         = (a, b) => totalDamage(hits(b)) - totalDamage(hits(a));
+const powerDpsSort    = (a, b) => powerDamage(hits(b)) - powerDamage(hits(a));
+const condiDpsSort    = (a, b) => condiDamage(hits(b)) - condiDamage(hits(a));
+const incomingSort    = (a, b) => incomingDamage(b) - incomingDamage(a);
+const wastedSort      = (a, b) => wastedTime(b) - wastedTime(a);
+const critBossSort    = (a, b) => critRate(bossHits(b)) - critRate(bossHits(a));
+const critSort        = (a, b) => critRate(hits(b)) - critRate(hits(a));
+const scholarSort     = (a, b) => scholarUptime(hits(b)) - scholarUptime(hits(a));
+const scholarBossSort = (a, b) => scholarUptime(bossHits(b)) - scholarUptime(bossHits(a));
+const downedSort      = (a, b) => downed(b).length - downed(a).length;
+
+const seconds = time => (time / 1000).toFixed(2);
 
 export default class Summary extends Component {
   constructor(props) {
@@ -43,19 +74,24 @@ export default class Summary extends Component {
     }
   }
 
-  render({ encounter, players, enemies }, { sort }, { encounter: { duration }, boss: { duration: bossDuration }, format: { dps, percent, damage, number } }) {
-    const Player = ({ agent, bossHits, hits }) => <tr>
-      <td class="icon"><Profession profession={agent.profession} /></td>
-      <td class="name">{agent.name}</td>
-      <td class="subgroup">{agent.subgroup}</td>
-      <td class="number" title={damage(totalDamage(bossHits)) + " dmg"}>{dps(totalDamage(bossHits))}</td>
-      <td class="number secondary" title={damage(bossHits.power.totalDamage) + " dmg"}>{dps(bossHits.power.totalDamage)}</td>
-      <td class="number secondary" title={damage(bossHits.condi.totalDamage) + " dmg"}>{dps(bossHits.condi.totalDamage)}</td>
-      <td class="number" title={damage(totalDamage(hits)) + " dmg"}>{dps(totalDamage(hits))}</td>
-      <td class="number secondary" title={damage(hits.power.totalDamage) + " dmg"}>{dps(hits.power.totalDamage)}</td>
-      <td class="number secondary" title={damage(hits.condi.totalDamage) + " dmg"}>{dps(hits.condi.totalDamage)}</td>
-      <td class="number" title={`${bossHits.power.scholar} / ${bossHits.power.hits}`}>{percent(bossHits.power.scholar / bossHits.power.hits)}</td>
-      <td class="number secondary" title={`${hits.power.scholar} / ${hits.power.hits}`}>{percent(hits.power.scholar / hits.power.hits)}</td>
+  render({ encounter, players, enemies }, { sort }, { encounter: { duration }, boss: { duration: bossDuration }, format: { bossDps, dps, percent, damage, number } }) {
+    const Player = (player) => <tr>
+      <td class="icon"><Profession profession={player.agent.profession} /></td>
+      <td class="name">{agentName(player)}</td>
+      <td class="subgroup">{agentSubgroup(player)}</td>
+      <td class="number" title={damage(totalDamage(bossHits(player))) + " dmg"}>{bossDps(totalDamage(bossHits(player)))}</td>
+      <td class="number secondary" title={damage(powerDamage(bossHits(player))) + " dmg"}>{bossDps(powerDamage(bossHits(player)))}</td>
+      <td class="number secondary" title={damage(condiDamage(bossHits(player))) + " dmg"}>{bossDps(condiDamage(bossHits(player)))}</td>
+      <td class="number" title={damage(totalDamage(hits(player))) + " dmg"}>{dps(totalDamage(hits(player)))}</td>
+      <td class="number secondary" title={damage(powerDamage(hits(player))) + " dmg"}>{dps(powerDamage(hits(player)))}</td>
+      <td class="number secondary" title={damage(condiDamage(hits(player))) + " dmg"}>{dps(condiDamage(hits(player)))}</td>
+      <td class="number" title={dps(incomingDamage(player)) + " dps"}>{damage(incomingDamage(player))}</td>
+      <td class="number" title={`${wastedSkills(player).length} canceled skills`}>{seconds(wastedTime(player))}</td>
+      <td class="number" title={`${player.bossHits.power.criticals} / ${player.bossHits.power.hits}`}>{percent(critRate(bossHits(player)))}</td>
+      <td class="number secondary" title={`${player.hits.power.criticals} / ${player.hits.power.hits}`}>{percent(critRate(hits(player)))}</td>
+      <td class="number" title={`${player.bossHits.power.scholar} / ${player.bossHits.power.hits}`}>{percent(scholarUptime(bossHits(player)))}</td>
+      <td class="number secondary" title={`${player.hits.power.scholar} / ${player.hits.power.hits}`}>{percent(scholarUptime(hits(player)))}</td>
+      <td class="number">{number(downed(player).length)}</td>
     </tr>;
 
     const groupTotal = agents => {
@@ -83,6 +119,11 @@ export default class Summary extends Component {
       {groupTotal(agents)}
       <td></td>
       <td></td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td></td>
     </tr>;
     const Total = agents => <tr class="total">
       <td></td>
@@ -91,32 +132,65 @@ export default class Summary extends Component {
       {groupTotal(agents)}
       <td></td>
       <td></td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td></td>
     </tr>;
 
+    const firstHpEvent = ({ series }) => {
+      for(let i = 0; i < series.length; i++) {
+        if(series[i].health > 0) {
+          return series[i].time;
+        }
+      }
+
+      return Number.MAX_SAFE_INTEGER;
+    };
+    const firstEnemyHpActivity = enemies.reduce((a, b) => Math.min(firstHpEvent(b), a), Number.MAX_SAFE_INTEGER) - 1;
     const sorted  = players.slice().sort(sort);
     const grouped = groupBy(sorted, ({ agent: { subgroup }}) => subgroup);
+    const TH = ({sortFn, children, ...rest }) => <th {...rest}
+      class={[sort, sort.func].indexOf(sortFn) !== -1 ? "selected sortable" : "sortable"}
+      onClick={() => this.setSort(sortFn)}>{children}</th>;
 
     return <div class="summary">
-        <Graph class="graph" series={[].concat.apply([], enemies.map(e => e.series))} width="1000" height="300" />
+        <Graph class="graph" start={encounter.seriesStart / 1000} end={encounter.seriesEnd / 1000} width="1000" height="300">
+          <HealthGraph class="line" series={[].concat.apply([], enemies.map(e => e.series))} />
+          <GroupedGraphs>
+            {/*players.map(p => <DPSGraph class="line" series={damageSeries(p.series)} />)*/}
+            {players.map(p => <DPSGraph class="line" series={fulltimeAvg(bossDmgSeries(p.series), encounter.seriesStart / 1000)} />)}
+          </GroupedGraphs>
+        </Graph>
         <table>
         <tr>
           <th></th>
-          <th class={[sort, sort.func].indexOf(nameSort) !== -1    ? "selected" : ""} onClick={() => this.setSort(nameSort)}>Name</th>
-          <th class={[sort, sort.func].indexOf(groupSort) !== -1   ? "selected" : ""} onClick={() => this.setSort(groupSort)}>Group</th>
-          <th class={[sort, sort.func].indexOf(bossDpsSort) !== -1 ? "selected" : ""} colspan="3" onClick={() => this.setSort(bossDpsSort)}>Boss DPS</th>
-          <th class={[sort, sort.func].indexOf(dpsSort) !== -1     ? "selected" : ""} colspan="3" onClick={() => this.setSort(dpsSort)}>All DPS</th>
-          <th class={[sort, sort.func].indexOf(scholarSort) !== -1 ? "selected" : ""} colspan="2" onClick={() => this.setSort(scholarSort)}>Scholar</th>
+          <TH sortFn={nameSort} title="Character name">Name</TH>
+          <TH sortFn={groupSort} title="Subgroup">Group</TH>
+          <TH sortFn={bossDpsSort} colspan="3">Boss DPS</TH>
+          <TH sortFn={dpsSort} colspan="3">All DPS</TH>
+          <TH sortFn={incomingSort} title="Incoming damage">Incoming</TH>
+          <TH sortFn={wastedSort} title="Wasted time casting skills which got canceled">Wasted</TH>
+          <TH sortFn={critBossSort} colspan="2" title="Percentage of hits which were critical hits">Crits</TH>
+          <TH sortFn={scholarBossSort} colspan="2" title="Percentage of hits which potentially benefited from the >90% Scholar rune bonus">Scholar</TH>
+          <TH sortFn={downedSort} title="Number of times player got downed.">Downed</TH>
         </tr>
         <tr class="subheading">
           <th colspan="3"></th>
-          <th class={[sort, sort.func].indexOf(bossDpsSort) !== -1 ? "selected" : ""} onClick={() => this.setSort(bossDpsSort)}>All</th>
-          <th>Power</th>
-          <th>Condi</th>
-          <th class={[sort, sort.func].indexOf(dpsSort) !== -1 ? "selected" : ""} onClick={() => this.setSort(dpsSort)}>All</th>
-          <th>Power</th>
-          <th>Condi</th>
-          <th class={[sort, sort.func].indexOf(scholarSort) !== -1 ? "selected" : ""} onClick={() => this.setSort(scholarSort)}>Boss</th>
-          <th>All</th>
+          <TH sortFn={bossDpsSort}>All</TH>
+          <TH sortFn={bossPowerDps}>Power</TH>
+          <TH sortFn={bossCondiDps}>Condi</TH>
+          <TH sortFn={dpsSort}>All</TH>
+          <TH sortFn={powerDpsSort}>Power</TH>
+          <TH sortFn={condiDpsSort}>Condi</TH>
+          <th></th>
+          <th></th>
+          <TH sortFn={critBossSort}>Boss</TH>
+          <TH sortFn={critSort}>All</TH>
+          <TH sortFn={scholarBossSort}>Boss</TH>
+          <TH sortFn={scholarSort}>All</TH>
+          <th></th>
         </tr>
         {sorted.map(Player)}
         {grouped.map(Group)}

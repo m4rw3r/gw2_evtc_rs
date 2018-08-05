@@ -9,7 +9,9 @@ import Encounter     from "./Encounter";
 import Summary       from "./Summary";
 import PlayerSummary from "./PlayerSummary";
 
-class App extends Component {
+// TODO: Use a fragment-router to determine what to show and which settings
+
+class App extends Component<Data> {
   constructor() {
     super();
 
@@ -39,9 +41,18 @@ class App extends Component {
       end:   Math.max(end, agent.diedAt || agent.lastAware),
     }), { start: Number.MAX_VALUE, end: 0 });
 
-    const duration     = (encounter.logEnd - encounter.logStart) * 1000;
-    const bossDuration = (end - start);
+    const firstHpEvent = ({ series }) => {
+      for(let i = 0; i < series.length; i++) {
+        if(series[i].health > 0) {
+          return series[i].time;
+        }
+      }
 
+      return Number.MAX_SAFE_INTEGER;
+    };
+    const duration        = (encounter.logEnd - encounter.logStart) * 1000;
+    const firstHpActivity = enemies.reduce((a, b) => Math.min(firstHpEvent(b) * 1000, a), Number.MAX_SAFE_INTEGER) - 1;
+    const bossDuration    = (end - firstHpActivity);
 
     const time = timestamp => {
       timestamp -= start;
@@ -49,8 +60,9 @@ class App extends Component {
 
       return `${(timestamp / 60)|0}:${(timestamp % 60).toFixed(1)}`;
     };
-    const number = value => value.toLocaleString();
-    const dps    = total => number(Math.round(total / bossDuration * 1000));
+    const number  = value => value.toLocaleString();
+    const dps     = total => number(Math.round(total / duration * 1000));
+    const bossDps = total => number(Math.round(total / duration * 1000));
     const percent = fraction  => (fraction * 100).toFixed(2) + "%";
 
     return {
@@ -60,6 +72,7 @@ class App extends Component {
         duration: duration,
       },
       boss: {
+        firstHpActivity,
         start,
         end,
         duration: bossDuration,
@@ -69,6 +82,7 @@ class App extends Component {
         damage: number,
         number,
         dps,
+        bossDps,
         percent,
       },
     };
@@ -87,7 +101,7 @@ class App extends Component {
       : <PlayerSummary {...data} key={player.agent.accountName} player={player} />;
 
     return <div class="evtc">
-      <Encounter {...encounter} />
+      <Encounter {...encounter} enemies={enemies} />
 
       <div class="evtc-body">
         <PlayerList players={players} selected={selected} onSelect={this.onSelect} />
@@ -100,7 +114,8 @@ class App extends Component {
   }
 }
 
-export default function createApp(data, element) {
+export default function createApp(data: Data, element: Element) {
   console.log(data);
+
   render(<App {...data} />, element);
 }

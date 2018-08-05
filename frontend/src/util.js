@@ -1,5 +1,11 @@
 
-const skills = [
+type Skill = {
+  name: string,
+  id:   number,
+  icon: string,
+};
+
+const skills: Array<Skill> = [
   // Conditions
   { name: "Burning", id: 737, type: "Boon", boonStack: "Intensity", maxStacks: 1500, boonType: "Condition", icon: "https://wiki.guildwars2.com/images/thumb/4/45/Burning.png/20px-Burning.png" },
   { name: "Bleeding", id: 736, type: "Boon", boonStack: "Intensity", maxStacks: 1500, boonType: "Condition", icon: "https://wiki.guildwars2.com/images/thumb/3/33/Bleeding.png/20px-Bleeding.png" },
