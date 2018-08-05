@@ -169,13 +169,16 @@ const EXTRA_BOSS_IDS: &'static [(SpeciesId, Profession)] = &[
 
 #[derive(Debug)]
 pub struct Metadata<'a> {
-    buffer: &'a EvtcBuf<'a>,
-    agents: Vec<Agent>,
-    start:  u32,
-    end:    u32,
-    lang:   Language,
-    build:  u64,
-    shard:  u64,
+    buffer:    &'a EvtcBuf<'a>,
+    agents:    Vec<Agent>,
+    start:     u32,
+    end:       u32,
+    /// Start of log, unix timestamp, server time
+    log_start: u64,
+    log_end:   u64,
+    lang:      Language,
+    build:     u64,
+    shard:     u64,
 }
 
 impl<'a> Metadata<'a> {
@@ -258,6 +261,8 @@ impl<'a> Metadata<'a> {
             lang,
             build,
             shard,
+            log_start: buffer.events.first().as_ref().map(Event::time).unwrap_or(0),
+            log_end:   buffer.events.last().as_ref().map(Event::time).unwrap_or(u64::MAX),
         }
     }
 
@@ -304,14 +309,28 @@ impl<'a> Metadata<'a> {
         self.agents.iter().filter(move |a| a.meta.master_agent == master_id)
     }
 
+    /// Start of log, unix timestamp, server time
     #[inline]
-    pub fn log_start(&self) -> u32 {
+    pub fn log_start_time(&self) -> u32 {
         self.start
     }
 
+    /// End of log, unix timestamp, server time
     #[inline]
-    pub fn log_end(&self) -> u32 {
+    pub fn log_end_time(&self) -> u32 {
         self.end
+    }
+
+    /// Start of log, relative milliseconds
+    #[inline]
+    pub fn log_start(&self) -> u64 {
+        self.log_start
+    }
+
+    /// End of log, relative milliseconds
+    #[inline]
+    pub fn log_end(&self) -> u64 {
+        self.log_end
     }
 
     #[inline]

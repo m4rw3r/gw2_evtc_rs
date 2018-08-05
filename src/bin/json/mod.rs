@@ -93,10 +93,12 @@ struct TimeEntry {
     buffs:       Option<FnvHashMap<u16, BuffSnapshot>>,
     health:      Option<u64>,
     damage:      i64,
+    #[serde(rename="bossDmg")]
     boss_dmg:    i64,
     downed:      bool,
     revived:     bool,
     dead:        bool,
+    #[serde(rename="weaponSwap")]
     weapon_swap: bool,
 }
 
@@ -234,6 +236,10 @@ struct EncounterInfo {
     log_start:    u32,
     #[serde(rename="logEnd")]
     log_end:      u32,
+    #[serde(rename="seriesStart")]
+    series_start: u64,
+    #[serde(rename="seriesEnd")]
+    series_end:   u64,
     #[serde(rename="gameBuild")]
     game_build:   u64,
     #[serde(rename="lang")]
@@ -304,8 +310,10 @@ panic!("FOO");
 
     let data: Data<&CombatEventV1> = Data {
         encounter: EncounterInfo {
-            log_start:    meta.log_start(),
-            log_end:      meta.log_end(),
+            log_start:    meta.log_start_time(),
+            log_end:      meta.log_end_time(),
+            series_start: meta.log_start(),
+            series_end:   meta.log_end(),
             log_name:     logname,
             game_build:   meta.game_build(),
             game_lang:    meta.language(),
