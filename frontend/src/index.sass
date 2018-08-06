@@ -11,6 +11,25 @@ $active:    #fff
   justify-content: space-between
   margin:          2em auto
 
+@mixin horizontal-selection
+  display:         flex
+  justify-content: center
+
+  li
+    flex:            1
+    display:         flex
+    align-items:     center
+    padding:         1em
+    justify-content: center
+    background:      $inactive
+
+    &:hover
+      cursor:     pointer
+      background: $active
+
+    &.selected
+      background: $active
+
 html
   font-size:   75%
   font-family: "Open Sans", sans-serif

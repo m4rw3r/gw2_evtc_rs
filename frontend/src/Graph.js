@@ -167,7 +167,7 @@ export class Graph extends Component {
     };
 
     this.setState({
-      mouseX: x,
+      mouseX: coords.x,
     });
   }
   mouseleave() {

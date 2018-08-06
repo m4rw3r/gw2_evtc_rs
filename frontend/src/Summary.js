@@ -16,6 +16,10 @@ import { damageSeries
        } from "./Graph";
 import { groupBy }     from "./util";
 
+const DAMAGE    = "section_damage";
+const BOONS     = "section_boons";
+const MECHANICS = "section_mechanics";
+
 const agentName      = ({ agent: { name: a } })                 => a;
 const agentSubgroup  = ({ agent: { subgroup: a } })             => a;
 const bossHits       = ({ bossHits: a })                        => a;
@@ -98,7 +102,30 @@ const professionColour = ({ profession }) => {
   }
 }
 
-export default class Summary extends Component {
+class PlayerDamageRow extends Component {
+  render({ agent: { name, profession, subgroup }, bossHits, hits, incomingDamage: { total: { totalDamage: incomingDamage } }, activationLog, series }, _, { format: { bossDps, dps, percent, damage, number } }) {
+    return <tr>
+      <td class="icon" title={profession}><Profession profession={profession} /></td>
+      <td class="name">{name}</td>
+      <td class="subgroup">{subgroup}</td>
+      <td class="number" title={damage(totalDamage(bossHits)) + " dmg"}>{bossDps(totalDamage(bossHits))}</td>
+      <td class="number secondary" title={damage(powerDamage(bossHits)) + " dmg"}>{bossDps(powerDamage(bossHits))}</td>
+      <td class="number secondary" title={damage(condiDamage(bossHits)) + " dmg"}>{bossDps(condiDamage(bossHits))}</td>
+      <td class="number" title={damage(totalDamage(hits)) + " dmg"}>{dps(totalDamage(hits))}</td>
+      <td class="number secondary" title={damage(powerDamage(hits)) + " dmg"}>{dps(powerDamage(hits))}</td>
+      <td class="number secondary" title={damage(condiDamage(hits)) + " dmg"}>{dps(condiDamage(hits))}</td>
+      <td class="number" title={dps(incomingDamage) + " dps"}>{damage(incomingDamage)}</td>
+      <td class="number" title={`${wastedSkills({ activationLog }).length} canceled skills`}>{seconds(wastedTime({ activationLog }))}</td>
+      <td class="number" title={`${bossHits.power.criticals} / ${bossHits.power.hits}`}>{percent(critRate(bossHits))}</td>
+      <td class="number secondary" title={`${hits.power.criticals} / ${hits.power.hits}`}>{percent(critRate(hits))}</td>
+      <td class="number" title={`${bossHits.power.scholar} / ${bossHits.power.hits}`}>{percent(scholarUptime(bossHits))}</td>
+      <td class="number secondary" title={`${hits.power.scholar} / ${hits.power.hits}`}>{percent(scholarUptime(hits))}</td>
+      <td class="downed">{number(downed({ series }).length)}</td>
+    </tr>;
+  }
+}
+
+class DamageTable extends Component {
   constructor(props) {
     super(props);
 
@@ -121,25 +148,6 @@ export default class Summary extends Component {
   }
 
   render({ encounter, players, enemies }, { sort }, { encounter: { duration }, boss: { duration: bossDuration }, format: { bossDps, dps, percent, damage, number } }) {
-    const Player = (player) => <tr>
-      <td class="icon"><Profession profession={player.agent.profession} /></td>
-      <td class="name">{agentName(player)}</td>
-      <td class="subgroup">{agentSubgroup(player)}</td>
-      <td class="number" title={damage(totalDamage(bossHits(player))) + " dmg"}>{bossDps(totalDamage(bossHits(player)))}</td>
-      <td class="number secondary" title={damage(powerDamage(bossHits(player))) + " dmg"}>{bossDps(powerDamage(bossHits(player)))}</td>
-      <td class="number secondary" title={damage(condiDamage(bossHits(player))) + " dmg"}>{bossDps(condiDamage(bossHits(player)))}</td>
-      <td class="number" title={damage(totalDamage(hits(player))) + " dmg"}>{dps(totalDamage(hits(player)))}</td>
-      <td class="number secondary" title={damage(powerDamage(hits(player))) + " dmg"}>{dps(powerDamage(hits(player)))}</td>
-      <td class="number secondary" title={damage(condiDamage(hits(player))) + " dmg"}>{dps(condiDamage(hits(player)))}</td>
-      <td class="number" title={dps(incomingDamage(player)) + " dps"}>{damage(incomingDamage(player))}</td>
-      <td class="number" title={`${wastedSkills(player).length} canceled skills`}>{seconds(wastedTime(player))}</td>
-      <td class="number" title={`${player.bossHits.power.criticals} / ${player.bossHits.power.hits}`}>{percent(critRate(bossHits(player)))}</td>
-      <td class="number secondary" title={`${player.hits.power.criticals} / ${player.hits.power.hits}`}>{percent(critRate(hits(player)))}</td>
-      <td class="number" title={`${player.bossHits.power.scholar} / ${player.bossHits.power.hits}`}>{percent(scholarUptime(bossHits(player)))}</td>
-      <td class="number secondary" title={`${player.hits.power.scholar} / ${player.hits.power.hits}`}>{percent(scholarUptime(hits(player)))}</td>
-      <td class="downed">{number(downed(player).length)}</td>
-    </tr>;
-
     const groupTotal = agents => {
       const totalBossDamage = agents.reduce((b, a) => totalDamage(a.bossHits) + b, 0);
       const powerBossDamage = agents.reduce((b, a) => a.bossHits.power.totalDamage + b, 0);
@@ -158,7 +166,7 @@ export default class Summary extends Component {
       ];
     }
 
-    const Group = (agents) => <tr class="group-total">
+    const GroupDamageRow = (agents) => <tr class="group-total">
       <td></td>
       <td>Group {agents[0].agent.subgroup}</td>
       <td></td>
@@ -171,7 +179,7 @@ export default class Summary extends Component {
       <td></td>
       <td></td>
     </tr>;
-    const Total = agents => <tr class="total">
+    const TotalDamageRow = agents => <tr class="total">
       <td></td>
       <td>Total</td>
       <td></td>
@@ -190,52 +198,80 @@ export default class Summary extends Component {
     const TH = ({sortFn, children, ...rest }) => <th {...rest}
       class={[sort, sort.func].indexOf(sortFn) !== -1 ? "selected sortable" : "sortable"}
       onClick={() => this.setSort(sortFn)}>{children}</th>;
+    return <table>
+      <tr>
+        <th></th>
+        <TH sortFn={nameSort} title="Character name">Name</TH>
+        <TH sortFn={groupSort} title="Subgroup">Group</TH>
+        <TH sortFn={bossDpsSort} colspan="3">Boss DPS</TH>
+        <TH sortFn={dpsSort} colspan="3">All DPS</TH>
+        <TH sortFn={incomingSort} title="Incoming damage">Incoming</TH>
+        <TH sortFn={wastedSort} title="Wasted time casting skills which got canceled">Wasted</TH>
+        <TH sortFn={critBossSort} colspan="2" title="Percentage of hits which were critical hits">Crits</TH>
+        <TH sortFn={scholarBossSort} colspan="2" title="Percentage of hits which potentially benefited from the >90% Scholar rune bonus">Scholar</TH>
+        <TH sortFn={downedSort} title="Number of times player got downed."><span class="icon death"></span></TH>
+      </tr>
+      <tr class="subheading">
+        <th colspan="3"></th>
+        <TH sortFn={bossDpsSort}>All</TH>
+        <TH sortFn={bossPowerDps}>Power</TH>
+        <TH sortFn={bossCondiDps}>Condi</TH>
+        <TH sortFn={dpsSort}>All</TH>
+        <TH sortFn={powerDpsSort}>Power</TH>
+        <TH sortFn={condiDpsSort}>Condi</TH>
+        <th></th>
+        <th></th>
+        <TH sortFn={critBossSort}>Boss</TH>
+        <TH sortFn={critSort}>All</TH>
+        <TH sortFn={scholarBossSort}>Boss</TH>
+        <TH sortFn={scholarSort}>All</TH>
+        <th></th>
+      </tr>
+      {sorted.map(p => <PlayerDamageRow {...p} />)}
+      {grouped.map(GroupDamageRow)}
+      {TotalDamageRow(players)}
+    </table>;
+  }
+}
+
+export default class Summary extends Component {
+  constructor(props) {
+    super(props);
+
+    this.state = {
+      section: DAMAGE,
+    };
+  }
+
+  render({ encounter, players, enemies }, { section }, { format: { damage } }) {
+    let body = null;
+
+    switch(section) {
+    case DAMAGE:
+      body = <DamageTable encounter={encounter} players={players} enemies={enemies} />;
+      break;
+    default:
+      body = <p>Not implemented</p>;
+    }
 
     return <div class="summary">
-        <ResponsiveGraph class="graph">
-          <Graph start={encounter.seriesStart / 1000} end={encounter.seriesEnd / 1000} width="1500" height="300">
-            <TimeAxis class="time-axis" />
-            <HealthGraph class="line" style={{ stroke: "#FFCC66", "stroke-dasharray": 5 }} series={[].concat.apply([], enemies.map(e => e.series))} />
-            <GroupedGraphs>
-              <Axis format={damage} class="damage-axis" />
-              {/*players.map(p => <DPSGraph class="line" series={damageSeries(p.series)} />)*/}
-              {players.map(p => <DPSGraph class="line" style={{ stroke: professionColour(p.agent) }} series={fulltimeAvg(bossDmgSeries(p.series), encounter.seriesStart / 1000)} />)}
-            </GroupedGraphs>
-          </Graph>
-        </ResponsiveGraph>
-        <table>
-        <tr>
-          <th></th>
-          <TH sortFn={nameSort} title="Character name">Name</TH>
-          <TH sortFn={groupSort} title="Subgroup">Group</TH>
-          <TH sortFn={bossDpsSort} colspan="3">Boss DPS</TH>
-          <TH sortFn={dpsSort} colspan="3">All DPS</TH>
-          <TH sortFn={incomingSort} title="Incoming damage">Incoming</TH>
-          <TH sortFn={wastedSort} title="Wasted time casting skills which got canceled">Wasted</TH>
-          <TH sortFn={critBossSort} colspan="2" title="Percentage of hits which were critical hits">Crits</TH>
-          <TH sortFn={scholarBossSort} colspan="2" title="Percentage of hits which potentially benefited from the >90% Scholar rune bonus">Scholar</TH>
-          <TH sortFn={downedSort} title="Number of times player got downed."><span class="icon death"></span></TH>
-        </tr>
-        <tr class="subheading">
-          <th colspan="3"></th>
-          <TH sortFn={bossDpsSort}>All</TH>
-          <TH sortFn={bossPowerDps}>Power</TH>
-          <TH sortFn={bossCondiDps}>Condi</TH>
-          <TH sortFn={dpsSort}>All</TH>
-          <TH sortFn={powerDpsSort}>Power</TH>
-          <TH sortFn={condiDpsSort}>Condi</TH>
-          <th></th>
-          <th></th>
-          <TH sortFn={critBossSort}>Boss</TH>
-          <TH sortFn={critSort}>All</TH>
-          <TH sortFn={scholarBossSort}>Boss</TH>
-          <TH sortFn={scholarSort}>All</TH>
-          <th></th>
-        </tr>
-        {sorted.map(Player)}
-        {grouped.map(Group)}
-        {Total(players)}
-      </table>
+      <ResponsiveGraph class="graph">
+        <Graph start={encounter.seriesStart / 1000} end={encounter.seriesEnd / 1000} width="1500" height="300">
+          <GroupedGraphs>
+            {/*players.map(p => <DPSGraph class="line" series={damageSeries(p.series)} />)*/}
+            {players.map(p => <DPSGraph class="line" style={{ stroke: professionColour(p.agent) }} series={fulltimeAvg(bossDmgSeries(p.series), encounter.seriesStart / 1000)} />)}
+            <Axis format={damage} class="damage-axis" />
+          </GroupedGraphs>
+          <HealthGraph class="line" style={{ stroke: "#FFCC66", "stroke-dasharray": 5 }} series={[].concat.apply([], enemies.map(e => e.series))} />
+          <TimeAxis class="time-axis" />
+        </Graph>
+      </ResponsiveGraph>
+      <ul class="section-list">
+        <li class={section === DAMAGE ? "selected" : null} onClick={() => this.setState({ section: DAMAGE })}>Damage</li>
+        <li class={section === BOONS ? "selected" : null} onClick={() => this.setState({ section: BOONS })}>Boons</li>
+        <li class={section === MECHANICS ? "selected" : null} onClick={() => this.setState({ section: MECHANICS })}>Mechanics</li>
+      </ul>
+      {body}
     </div>;
   }
 }
