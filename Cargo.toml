@@ -7,6 +7,9 @@ authors = ["Martin Wernstål <m4rw3r@gmail.com>"]
 name = "evtc"
 path = "src/lib.rs"
 
+[profile.release]
+overflow-checks = true
+
 [dependencies]
 fnv = "1.0.3"
 clap = "2.32"

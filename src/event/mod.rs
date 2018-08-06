@@ -137,7 +137,7 @@ pub enum MetaEventData {
 }
 
 /// The type of damaging hit.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum HitType {
     Condi,
     Normal,
@@ -163,7 +163,7 @@ impl HitType {
 }
 
 /// State updates for agents.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum StateChange {
     /// Agent entered combat.
     EnterCombat(u64),
@@ -201,7 +201,7 @@ pub enum StateChange {
 }
 
 /// Type of skill animation activation.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum CastType {
     /// Normal cast, expected duration
     Normal(u32),

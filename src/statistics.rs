@@ -41,8 +41,36 @@ sink_from_iter!(Hits, Damage);
 sink_from_iter!(Abilities, Damage);
 sink_from_iter!(ActivationLog, Source);
 
+#[derive(Debug, Copy, Clone)]
+pub struct MinDamage(i64);
+
+impl Default for MinDamage {
+    fn default() -> Self {
+        MinDamage(i64::MAX)
+    }
+}
+
+
+impl MinDamage {
+    fn add(&mut self, num: i64) {
+        self.0 = cmp::min(num, self.0);
+    }
+}
+
+impl Serialize for MinDamage {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+      where S: Serializer {
+        if self.0 == i64::MAX {
+            serializer.serialize_i64(0)
+        }
+        else {
+            serializer.serialize_i64(self.0)
+        }
+    }
+}
+
 /// Statistics for hits
-#[derive(Debug, Copy, Clone, Serialize)]
+#[derive(Debug, Default, Copy, Clone, Serialize)]
 pub struct Hits {
     /// Total physical damage
     #[serde(rename="totalDamage")]
@@ -74,33 +102,10 @@ pub struct Hits {
     absorbed:      u32,
     /// Minimum hit damage
     #[serde(rename="minDamage")]
-    min_damage:    i64,
+    min_damage:    MinDamage,
     /// Maximum hit damage
     #[serde(rename="maxDamage")]
     max_damage:    i64,
-}
-
-impl Default for Hits {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            total_damage:  0,
-            wasted_damage: 0,
-            hits:          0,
-            criticals:     0,
-            flanking:      0,
-            scholar:       0,
-            glancing:      0,
-            moving:        0,
-            interrupted:   0,
-            blocked:       0,
-            evaded:        0,
-            missed:        0,
-            absorbed:      0,
-            min_damage:    i64::MAX,
-            max_damage:    0,
-        }
-    }
 }
 
 impl<T: Damage> Sink<T> for Hits {
@@ -111,10 +116,17 @@ impl<T: Damage> Sink<T> for Hits {
 
         debug_assert!(if hit_type.is_zero() { damage == 0 } else { true });
 
-        self.total_damage += damage;
-        self.hits         += 1;
-        self.min_damage    = cmp::min(self.min_damage, damage);
-        self.max_damage    = cmp::max(self.max_damage, damage);
+        self.hits += 1;
+
+        if hit_type != HitType::Absorb {
+            self.total_damage += damage;
+
+            if damage != 0 {
+                // TODO: Is this a good thing?
+                self.min_damage.add(damage);
+                self.max_damage = cmp::max(self.max_damage, damage);
+            }
+        }
 
         if e.flanking() { self.flanking += 1; }
         if e.moving()   { self.moving   += 1; }

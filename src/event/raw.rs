@@ -21,6 +21,7 @@ use InstanceId;
 use Profession;
 use SpeciesId;
 
+use std::cmp;
 use std::fmt;
 use std::mem;
 use std::slice;
@@ -1240,7 +1241,8 @@ impl<'a> Damage for DamageEvent<&'a CombatEventV1> {
     #[inline]
     fn damage(&self) -> i64 {
         if self.0.buff > 0 {
-            self.0.buff_dmg as i64
+            // Resisted damage seems to be negative
+            cmp::max(0, self.0.buff_dmg as i64)
         }
         else {
             self.0.value as i64
