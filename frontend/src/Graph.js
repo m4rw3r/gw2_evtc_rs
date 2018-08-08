@@ -33,16 +33,8 @@ export const fulltimeAvg   = (series: [number, number], start) => {
 };
 export const downed       = ({ downed }) => downed;
 
-const renderLine = ({ series, time, yScale, prop }) => {
-    yScale = yScale.copy().domain([max(series, prop), 0]);
-
-    const lineGraph = line().x(time).y(n => yScale(prop(n)));
-
-    return <path class="line" d={lineGraph(series.filter(prop))} />
-}
-
 // TODO: Generalize these
-export const HealthGraph = ({ series, start, end, x, xScale, yScale, ...rest }) => {
+export const HealthGraph = ({ series, start: _s, end: _e, x, xScale: _xS, yScale, ...rest }) => {
   yScale.domain([100, 0]);
 
   const lineGraph = line().x(x).y(n => yScale(health(n)));
@@ -112,7 +104,7 @@ export class ResponsiveGraph extends Component {
 
     this.resize = this.resize.bind(this);
   }
- 
+
   componentDidMount() {
     this.resize()
 

@@ -1,4 +1,5 @@
 import { h
+       , cloneElement
        , Component
        } from "preact";
 
@@ -102,30 +103,7 @@ const professionColour = ({ profession }) => {
   }
 }
 
-class PlayerDamageRow extends Component {
-  render({ agent: { name, profession, subgroup }, bossHits, hits, incomingDamage: { total: { totalDamage: incomingDamage } }, activationLog, series }, _, { format: { bossDps, dps, percent, damage, number } }) {
-    return <tr>
-      <td class="icon" title={profession}><Profession profession={profession} /></td>
-      <td class="name">{name}</td>
-      <td class="subgroup">{subgroup}</td>
-      <td class="number" title={damage(totalDamage(bossHits)) + " dmg"}>{bossDps(totalDamage(bossHits))}</td>
-      <td class="number secondary" title={damage(powerDamage(bossHits)) + " dmg"}>{bossDps(powerDamage(bossHits))}</td>
-      <td class="number secondary" title={damage(condiDamage(bossHits)) + " dmg"}>{bossDps(condiDamage(bossHits))}</td>
-      <td class="number" title={damage(totalDamage(hits)) + " dmg"}>{dps(totalDamage(hits))}</td>
-      <td class="number secondary" title={damage(powerDamage(hits)) + " dmg"}>{dps(powerDamage(hits))}</td>
-      <td class="number secondary" title={damage(condiDamage(hits)) + " dmg"}>{dps(condiDamage(hits))}</td>
-      <td class="number" title={dps(incomingDamage) + " dps"}>{damage(incomingDamage)}</td>
-      <td class="number" title={`${wastedSkills({ activationLog }).length} canceled skills`}>{seconds(wastedTime({ activationLog }))}</td>
-      <td class="number" title={`${bossHits.power.criticals} / ${bossHits.power.hits}`}>{percent(critRate(bossHits))}</td>
-      <td class="number secondary" title={`${hits.power.criticals} / ${hits.power.hits}`}>{percent(critRate(hits))}</td>
-      <td class="number" title={`${bossHits.power.scholar} / ${bossHits.power.hits}`}>{percent(scholarUptime(bossHits))}</td>
-      <td class="number secondary" title={`${hits.power.scholar} / ${hits.power.hits}`}>{percent(scholarUptime(hits))}</td>
-      <td class="downed">{number(downed({ series }).length)}</td>
-    </tr>;
-  }
-}
-
-class DamageTable extends Component {
+class SortableComponent extends Component {
   constructor(props) {
     super(props);
 
@@ -147,7 +125,46 @@ class DamageTable extends Component {
     }
   }
 
-  render({ encounter, players, enemies }, { sort }, { encounter: { duration }, boss: { duration: bossDuration }, format: { bossDps, dps, percent, damage, number } }) {
+  th(sort) {
+    return ({sortFn, children, ...rest }) => <th {...rest}
+      class={[sort, sort.func].indexOf(sortFn) !== -1 ? "selected sortable" : "sortable"}
+      onClick={() => this.setSort(sortFn)}>{children}</th>;
+  }
+
+  render({ children }, { sort }) {
+    if(children.length !== 1) {
+       console.error("<SortableComponent /> expects a single child only.");
+    }
+
+    return children.map(c => cloneElement(c, { sort, TH: this.th(sort) }))[0];
+  }
+}
+
+class PlayerDamageRow extends Component {
+  render({ agent: { name, profession, subgroup }, bossHits, hits, incomingDamage: { total: { totalDamage: incomingDamage } }, activationLog, series }, _, { format: { bossDps, dps, percent, damage, number } }) {
+    return <tr>
+      <td class="icon" title={profession}><Profession profession={profession} /></td>
+      <td class="name">{name}</td>
+      <td class="subgroup">{subgroup}</td>
+      <td class="number" title={damage(totalDamage(bossHits)) + " dmg"}>{bossDps(totalDamage(bossHits))}</td>
+      <td class="number secondary" title={damage(powerDamage(bossHits)) + " dmg"}>{bossDps(powerDamage(bossHits))}</td>
+      <td class="number secondary" title={damage(condiDamage(bossHits)) + " dmg"}>{bossDps(condiDamage(bossHits))}</td>
+      <td class="number" title={damage(totalDamage(hits)) + " dmg"}>{dps(totalDamage(hits))}</td>
+      <td class="number secondary" title={damage(powerDamage(hits)) + " dmg"}>{dps(powerDamage(hits))}</td>
+      <td class="number secondary" title={damage(condiDamage(hits)) + " dmg"}>{dps(condiDamage(hits))}</td>
+      <td class="number" title={dps(incomingDamage) + " dps"}>{damage(incomingDamage)}</td>
+      <td class="number" title={`${wastedSkills({ activationLog }).length} canceled skills`}>{seconds(wastedTime({ activationLog }))}</td>
+      <td class="number" title={`${bossHits.power.criticals} / ${bossHits.power.hits}`}>{percent(critRate(bossHits), 1)}</td>
+      <td class="number secondary" title={`${hits.power.criticals} / ${hits.power.hits}`}>{percent(critRate(hits), 1)}</td>
+      <td class="number" title={`${bossHits.power.scholar} / ${bossHits.power.hits}`}>{percent(scholarUptime(bossHits), 1)}</td>
+      <td class="number secondary" title={`${hits.power.scholar} / ${hits.power.hits}`}>{percent(scholarUptime(hits), 1)}</td>
+      <td class="downed">{number(downed({ series }).length)}</td>
+    </tr>;
+  }
+}
+
+class DamageTable extends SortableComponent {
+  render({ TH, players, sort }, _, { format: { bossDps, dps, damage } }) {
     const groupTotal = agents => {
       const totalBossDamage = agents.reduce((b, a) => totalDamage(a.bossHits) + b, 0);
       const powerBossDamage = agents.reduce((b, a) => a.bossHits.power.totalDamage + b, 0);
@@ -157,9 +174,9 @@ class DamageTable extends Component {
       const condiAllDamage = agents.reduce((b, a) => a.hits.condi.totalDamage + b, 0);
 
       return [
-        <td class="number" title={damage(totalBossDamage) + " dmg"}>{dps(totalBossDamage)}</td>,
-        <td class="number secondary" title={damage(powerBossDamage) + " dmg"}>{dps(powerBossDamage)}</td>,
-        <td class="number secondary" title={damage(condiBossDamage) + " dmg"}>{dps(condiBossDamage)}</td>,
+        <td class="number" title={damage(totalBossDamage) + " dmg"}>{bossDps(totalBossDamage)}</td>,
+        <td class="number secondary" title={damage(powerBossDamage) + " dmg"}>{bossDps(powerBossDamage)}</td>,
+        <td class="number secondary" title={damage(condiBossDamage) + " dmg"}>{bossDps(condiBossDamage)}</td>,
         <td class="number" title={damage(totalAllDamage) + " dmg"}>{dps(totalAllDamage)}</td>,
         <td class="number secondary" title={damage(powerAllDamage) + " dmg"}>{dps(powerAllDamage)}</td>,
         <td class="number secondary" title={damage(condiAllDamage) + " dmg"}>{dps(condiAllDamage)}</td>,
@@ -195,9 +212,7 @@ class DamageTable extends Component {
 
     const sorted  = players.slice().sort(sort);
     const grouped = groupBy(sorted, ({ agent: { subgroup }}) => subgroup);
-    const TH = ({sortFn, children, ...rest }) => <th {...rest}
-      class={[sort, sort.func].indexOf(sortFn) !== -1 ? "selected sortable" : "sortable"}
-      onClick={() => this.setSort(sortFn)}>{children}</th>;
+
     return <table>
       <tr>
         <th></th>
@@ -234,6 +249,58 @@ class DamageTable extends Component {
   }
 }
 
+const EMPTY_BUFF = {
+  overstack: 0,
+  stacks:    0,
+  stripped:  0,
+  sum:       0,
+  uptime:    0,
+};
+
+class PlayerBoonRow extends Component {
+  render({ agent: { name, profession, subgroup }, series, buffs, buffOrder }, _, { encounter: { duration }, format: { percent, number } }) {
+    const BuffRow = ({ skillId, stack: { type, max: maxStacks } }) => {
+      const { uptime, overstack } = buffs[skillId] || EMPTY_BUFF;
+
+      switch(type) {
+      case "Duration":
+        return <td class="number" title={`Including overstack: ${(uptime + overstack) / duration}`}>{percent(uptime / duration, 0)}</td>;
+      case "Intensity":
+        return <td class="number" title={`Including overstack: ${(uptime + overstack) / duration}`}>{number(uptime / duration, 1)}</td>;
+      }
+    };
+
+    return <tr>
+      <td class="icon" title={profession}><Profession profession={profession} /></td>
+      <td class="name">{name}</td>
+      <td class="subgroup">{subgroup}</td>
+      {buffOrder.map(BuffRow)}
+    </tr>;
+  }
+}
+
+const buffSort = ({ name: a }, { name: b }) => a.localeCompare(b);
+
+class BoonTable extends SortableComponent {
+  render({ TH, sort, buffs, players }) {
+    const sorted  = players.slice().sort(sort);
+    const grouped = groupBy(sorted, ({ agent: { subgroup }}) => subgroup);
+
+    const buffsSorted = Object.values(buffs).sort(buffSort);
+    const BuffHeading = ({ name, skillId }) => <TH sortFn={() => 0} title={name}>{name}</TH>;
+
+    return <table>
+      <tr>
+        <th></th>
+        <TH sortFn={nameSort} title="Character name">Name</TH>
+        <TH sortFn={groupSort} title="Subgroup">Group</TH>
+        {buffsSorted.map(BuffHeading)}
+      </tr>
+      {sorted.map(p => <PlayerBoonRow {...p} buffOrder={buffsSorted} />)}
+    </table>;
+  }
+}
+
 export default class Summary extends Component {
   constructor(props) {
     super(props);
@@ -243,12 +310,15 @@ export default class Summary extends Component {
     };
   }
 
-  render({ encounter, players, enemies }, { section }, { format: { damage } }) {
+  render({ buffs, encounter, players, enemies }, { section }, { format: { damage } }) {
     let body = null;
 
     switch(section) {
     case DAMAGE:
-      body = <DamageTable encounter={encounter} players={players} enemies={enemies} />;
+      body = <DamageTable players={players} />;
+      break;
+    case BOONS:
+      body = <BoonTable players={players} buffs={buffs} />;
       break;
     default:
       body = <p>Not implemented</p>;
@@ -271,7 +341,9 @@ export default class Summary extends Component {
         <li class={section === BOONS ? "selected" : null} onClick={() => this.setState({ section: BOONS })}>Boons</li>
         <li class={section === MECHANICS ? "selected" : null} onClick={() => this.setState({ section: MECHANICS })}>Mechanics</li>
       </ul>
-      {body}
+      <SortableComponent>
+        {body}
+      </SortableComponent>
     </div>;
   }
 }

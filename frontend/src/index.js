@@ -60,10 +60,10 @@ class App extends Component<Data> {
 
       return `${(timestamp / 60)|0}:${("00" + (timestamp % 60).toFixed(precision)).slice(-2)}`;
     };
-    const number  = value => value.toLocaleString();
+    const number  = (value, maximumFractionDigits=2) => value.toLocaleString(undefined, { maximumFractionDigits });
     const dps     = total => number(Math.round(total / duration * 1000));
     const bossDps = total => number(Math.round(total / duration * 1000));
-    const percent = fraction  => (fraction * 100).toFixed(2) + "%";
+    const percent = (fraction, precision=2)  => (fraction * 100).toFixed(precision) + "%";
 
     return {
       encounter: {
