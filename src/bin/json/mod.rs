@@ -218,6 +218,22 @@ impl<'a, E: Source> PlayerSummary<'a, E> {
             }
         }
 
+        self
+    }
+
+    fn finalize(mut self, time: u64) -> Self {
+        {
+            let entry = self.series.current(time / 1000);
+
+            self.buffs.update(time);
+            self.buffs.finalize(time);
+
+            // Snapshot buffs
+            if entry.buffs.is_none() {
+                entry.buffs = Some(self.buffs.snapshots().collect());
+            }
+        }
+
         self.series.finalize();
 
         self
@@ -300,7 +316,8 @@ panic!("FOO");
                                .filter(|a| a.profession().is_player_character())
                                .map(|a| PlayerSummary::new(&meta, a)
                                         // TODO: Is related to enough to get everything?
-                                        .parse(&boss_ids[..], meta.encounter_events().related_to(a)))
+                                        .parse(&boss_ids[..], meta.encounter_events().related_to(a))
+                                        .finalize(meta.log_end()))
                                .collect();
 
     let boss_summaries: Vec<_> = meta.bosses().map(|b| BossSummary {

@@ -10,7 +10,10 @@ use serde::ser::SerializeMap;
 use std::mem;
 use std::fmt;
 
-pub trait Stack {
+pub trait Stack: Default {
+    /// The stack metadata
+    const STACK_META: StackMeta;
+
     /// Pushes a new stack with the supplied duration in milliseconds, overstack is returned.
     fn push(&mut self, u32) -> u32;
     /// Updates the stack with the new timestamp difference, milliseconds.
@@ -67,7 +70,15 @@ pub struct Intensity<T: StackType, U: Sized>(pub T, pub U);
 
 macro_rules! impl_intensity {
     ($t:ident, $n:expr) => {
+impl Default for Intensity<$t, [u32; $n]> {
+    fn default() -> Self {
+        Intensity($t, [0; $n])
+    }
+}
+
 impl Stack for Intensity<$t, [u32; $n]> {
+    const STACK_META: StackMeta = StackMeta::Intensity { max: $n };
+
     fn push(&mut self, mut stack: u32) -> u32 {
         for (i, s) in self.1.iter_mut().enumerate() {
             // Add if the stack is empty or if we are above the locked items and it is lower
@@ -109,7 +120,15 @@ impl Stack for Intensity<$t, [u32; $n]> {
 
 macro_rules! impl_duration /*_current_duration*/ {
     ($t:ident, $n:expr) => {
+impl Default for Duration<$t, [u32; $n]> {
+    fn default() -> Self {
+        Duration($t, [0; $n])
+    }
+}
+
 impl Stack for Duration<$t, [u32; $n]> {
+    const STACK_META: StackMeta = StackMeta::Duration;
+
     fn push(&mut self, mut stack: u32) -> u32 {
         for (i, s) in self.1.iter_mut().enumerate() {
             // Add if the stack is empty or if we are above the locked items and it is lower
@@ -257,6 +276,14 @@ impl<T: Stack> Simulator<T> {
         }
     }
 
+    /// Performs a final update and then subtracts the remaining stack duration from the uptime
+    #[inline]
+    pub fn finalize(&mut self, time: u64) {
+        self.stack.update(time.saturating_sub(self.time) as u32);
+
+        self.uptime = self.uptime.saturating_sub(self.stack.sum());
+    }
+
     #[inline]
     pub fn stacks(&self) -> usize {
         self.stack.stacks()
@@ -289,6 +316,7 @@ pub trait BoxedSimulator<E: Buff> {
     fn stacks(&self) -> usize;
     fn sum(&self) -> u32;
     fn uptime(&self) -> u32;
+    fn finalize(&mut self, u64);
     fn overstack(&self) -> u32;
     fn stripped(&self) -> u32;
 }
@@ -299,6 +327,7 @@ impl<T: Stack, E:Buff> BoxedSimulator<E> for Simulator<T> {
     fn stacks(&self) -> usize { Simulator::stacks(self) }
     fn sum(&self) -> u32 { Simulator::sum(self) }
     fn uptime(&self) -> u32 { Simulator::uptime(self) }
+    fn finalize(&mut self, time: u64) { Simulator::finalize(self, time) }
     fn overstack(&self) -> u32 { Simulator::overstack(self) }
     fn stripped(&self) -> u32 { Simulator::stripped(self) }
 }
@@ -309,6 +338,7 @@ impl<E:Buff> BoxedSimulator<E> for () {
     fn stacks(&self) -> usize { 0 }
     fn sum(&self) -> u32 { 0 }
     fn uptime(&self) -> u32 { 0 }
+    fn finalize(&mut self, _time: u64) {}
     fn overstack(&self) -> u32 { 0 }
     fn stripped(&self) -> u32 { 0 }
 }
@@ -324,11 +354,21 @@ pub enum BuffType {
     Item,
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Serialize, Debug)]
+#[serde(tag = "type")]
+pub enum StackMeta {
+    Intensity {
+        max: u16
+    },
+    Duration,
+}
+
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct BuffMeta {
-    pub name:     &'static str,
+    pub name:       &'static str,
+    pub stack: StackMeta,
     #[serde(rename="skillId")]
-    pub skill_id: u16,
+    pub skill_id:   u16,
     // TODO: Friendly/hostile, offensive/defensive and so on
 }
 
@@ -365,7 +405,7 @@ macro_rules! buff_table {
             $type:ty {
                 $name:expr,
                 skill_id: $id:expr,
-                stack: $kind:expr $(,)*
+                stack: $kind:ty
             }
         ),+
         $(,)*
@@ -388,13 +428,20 @@ $visibility mod $module {
     use $crate::buff::BuffSnapshot;
     use $crate::buff::MetadataMap;
     use $crate::buff::BuffMeta;
+    use $crate::buff::Stack;
+    use $crate::buff::StackMeta;
 
     use super::*;
+
+    const fn stack_meta<T: Stack>() -> StackMeta {
+        T::STACK_META
+    }
 
     pub static META_LIST: &'static [BuffMeta] = &[
         $(
         BuffMeta {
             name:     $name,
+            stack:    stack_meta::<$kind>(),
             skill_id: $id,
         }
         ),*
@@ -405,7 +452,7 @@ $visibility mod $module {
     pub fn create_simulator<E: Buff>(agent_id: AgentId, skill_id: u16) -> BoxSimulator<E> {
         match skill_id {
             $(
-            $id => Box::new(Simulator::new(agent_id, $kind)),
+            $id => Box::new(Simulator::<$kind>::new(agent_id, Default::default())),
             )*
             // FIXME: Need to skip the boon
             _ => Box::new(()),
@@ -448,6 +495,12 @@ $visibility mod $module {
                 stripped:  v.stripped(),
             }))
         }
+
+        pub fn finalize(&mut self, time: u64) {
+            for (_, b) in &mut self.map {
+                b.finalize(time);
+            }
+        }
     }
 
     impl<E: Buff> fmt::Debug for Map<E> {
@@ -480,22 +533,22 @@ $visibility mod $module {
 
 buff_table!(
 pub table {
-    BuffType::Boon{"Aegis",        skill_id: 743,   stack: Duration(Queue, [0; 5])},
-    BuffType::Boon{"Alacrity",     skill_id: 30328, stack: Duration(Queue, [0; 5])},
-    BuffType::Boon{"Fury",         skill_id: 725,   stack: Duration(Queue, [0; 5])},
-    BuffType::Boon{"Might",        skill_id: 740,   stack: Intensity(Replace, [0; 25])},
-    BuffType::Boon{"Protection",   skill_id: 717,   stack: Duration(Queue, [0; 5])},
-    BuffType::Boon{"Quickness",    skill_id: 1187,  stack: Duration(Queue, [0; 5])},
-    BuffType::Boon{"Regeneration", skill_id: 718,   stack: Duration(Queue, [0; 5])},
-    BuffType::Boon{"Resistance",   skill_id: 26980, stack: Duration(Queue, [0; 5])},
-    BuffType::Boon{"Retaliation",  skill_id: 873,   stack: Duration(Queue, [0; 5])},
-    BuffType::Boon{"Stability",    skill_id: 1122,  stack: Intensity(Queue, [0; 25])},
-    BuffType::Boon{"Swiftness",    skill_id: 719,   stack: Duration(Queue,  [0; 5])},
-    BuffType::Boon{"Vigor",        skill_id: 726,   stack: Duration(Queue,  [0; 5])},
+    BuffType::Boon{"Aegis",        skill_id: 743,   stack: Duration<Queue, [u32; 5]>},
+    BuffType::Boon{"Alacrity",     skill_id: 30328, stack: Duration<Queue, [u32; 5]>},
+    BuffType::Boon{"Fury",         skill_id: 725,   stack: Duration<Queue, [u32; 5]>},
+    BuffType::Boon{"Might",        skill_id: 740,   stack: Intensity<Replace, [u32; 25]>},
+    BuffType::Boon{"Protection",   skill_id: 717,   stack: Duration<Queue, [u32; 5]>},
+    BuffType::Boon{"Quickness",    skill_id: 1187,  stack: Duration<Queue, [u32; 5]>},
+    BuffType::Boon{"Regeneration", skill_id: 718,   stack: Duration<Queue, [u32; 5]>},
+    BuffType::Boon{"Resistance",   skill_id: 26980, stack: Duration<Queue, [u32; 5]>},
+    BuffType::Boon{"Retaliation",  skill_id: 873,   stack: Duration<Queue, [u32; 5]>},
+    BuffType::Boon{"Stability",    skill_id: 1122,  stack: Intensity<Queue, [u32; 25]>},
+    BuffType::Boon{"Swiftness",    skill_id: 719,   stack: Duration<Queue,  [u32; 5]>},
+    BuffType::Boon{"Vigor",        skill_id: 726,   stack: Duration<Queue,  [u32; 5]>},
     // Conditions
     // Buffs
-    BuffKind::Buff{"Banner of Strength",   skill_id: 14417, stack: Duration(Replace, [0; 1])},
-    BuffKind::Buff{"Banner of Discipline", skill_id: 14449, stack: Duration(Replace, [0; 1])},
+    BuffKind::Buff{"Banner of Strength",   skill_id: 14417, stack: Duration<Replace, [u32; 1]>},
+    BuffKind::Buff{"Banner of Discipline", skill_id: 14449, stack: Duration<Replace, [u32; 1]>},
 });
 
 #[cfg(test)]
