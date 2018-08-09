@@ -58,7 +58,7 @@ class App extends Component<Data> {
       timestamp -= start;
       timestamp /= 1000;
 
-      return `${(timestamp / 60)|0}:${("00" + (timestamp % 60).toFixed(precision)).slice(-2)}`;
+      return `${(timestamp / 60)|0}:${("00" + (timestamp|0) % 60).slice(-2)}${precision ? (timestamp - timestamp|0).toFixed(precision).slice(1) : ""}`;
     };
     const number  = (value, maximumFractionDigits=2) => value.toLocaleString(undefined, { maximumFractionDigits });
     const dps     = total => number(Math.round(total / duration * 1000));
