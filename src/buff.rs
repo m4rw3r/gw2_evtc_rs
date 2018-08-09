@@ -461,10 +461,11 @@ $visibility mod $module {
 
     pub struct Map<E: Buff> {
         agent_id: AgentId,
-        map:     FnvHashMap<u16, BoxSimulator<E>>,
+        map:      FnvHashMap<u16, BoxSimulator<E>>,
     }
 
     impl<E: Buff> Map<E> {
+        #[inline]
         pub fn new(agent_id: AgentId) -> Self {
             Map {
                 map: FnvHashMap::default(),
@@ -487,7 +488,7 @@ $visibility mod $module {
         }
 
         pub fn snapshots<'a>(&'a self) -> impl Iterator<Item=(u16, BuffSnapshot)> + 'a {
-            self.map.iter().filter(|(_, v)| v.stacks() > 0).map(|(&k, v)| (k, BuffSnapshot {
+            self.map.iter().filter(|(_, v)| v.uptime() > 0).map(|(&k, v)| (k, BuffSnapshot {
                 stacks:    v.stacks(),
                 sum:       v.sum(),
                 uptime:    v.uptime(),
@@ -496,8 +497,13 @@ $visibility mod $module {
             }))
         }
 
+        #[inline]
+        pub fn len(&self) -> usize {
+            self.map.len()
+        }
+
         pub fn finalize(&mut self, time: u64) {
-            for (_, b) in &mut self.map {
+            for b in self.map.values_mut() {
                 b.finalize(time);
             }
         }

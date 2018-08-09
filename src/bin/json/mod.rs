@@ -284,7 +284,6 @@ fn group_agents_by_species<'a, I: Iterator<Item=&'a Agent>>(iter: I) -> FnvHashM
         map.entry(i).or_insert(Vec::new()).push(a);
     }
 
-
     map
 }
 
@@ -295,22 +294,6 @@ pub fn parse_data<W: Write>(buffer: &[u8], logname: String, pretty:bool, writer:
     let bosses:  Vec<_> = meta.bosses().collect();
     let boss_ids: Vec<_> = bosses.iter().map(|a| a.id()).collect();
 
-/*
-
-    println!("Quickness:");
-    println!("uptime:    {}", (quickness.uptime() as f64) / (meta.log_end() - meta.log_start()) as f64 / 1000.0);
-    println!("overstack: {}", (quickness.overstack() as f64) / 1000.0);
-    println!("Might:");
-    println!("uptime:    {}", (might.uptime() as f64) / (meta.log_end() - meta.log_start()) as f64 / 1000.0);
-    println!("overstack: {}", (might.overstack() as f64) / 1000.0);
-    println!("Spotter:");
-    println!("uptime:    {}", (spotter.uptime() as f64) / (meta.log_end() - meta.log_start()) as f64 / 1000.0);
-    println!("overstack: {}", (spotter.overstack() as f64) / 1000.0);
-    println!("fight:     {}", meta.log_end() - meta.log_start());
-}
-
-panic!("FOO");
-*/
     let player_summaries = meta.agents()
                                .iter()
                                .filter(|a| a.profession().is_player_character())
