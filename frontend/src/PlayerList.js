@@ -1,6 +1,7 @@
 import { h
        , Component
        } from "preact";
+import { NavLink } from "react-router-dom";
 
 import { groupBy } from "./util";
 import Profession from "./icons/Profession";
@@ -23,7 +24,7 @@ export default class PlayerList extends Component {
             , diedAt
             } = agent;
 
-      return <div class={`player${selected === name ? " active" : ""}`} onClick={() => onSelect(name)}>
+      return <NavLink to={`/player/${name}`} className="player" activeClassName="active">
         <Profession class="profession" profession={profession} />
 
         <div class="name">
@@ -40,7 +41,7 @@ export default class PlayerList extends Component {
           {isPov ? <span class="icon revealed" title="Point of View"></span> : null}
           {diedAt ? <span class="icon death" title="Died"></span> : null}
         </div>
-      </div>;
+      </NavLink>;
     };
 
     const Subgroup = (players) => <div class="subgroup">{players.map(Player)}</div>;
@@ -50,7 +51,7 @@ export default class PlayerList extends Component {
     const totalBossDamage = players.map(player => player.bossHits.power.totalDamage + player.bossHits.condi.totalDamage).reduce((a, b) => a + b, 0);
 
     return <div class="player-list">
-      <div class={`player${selected === TAB_SUMMARY ? " active" : ""}`} onClick={() => onSelect(TAB_SUMMARY)}>
+      <NavLink to="/" className="player" activeClassName="active">
         <div class="profession"></div>
         <div class="name">
           <h3>Summary</h3>
@@ -59,7 +60,7 @@ export default class PlayerList extends Component {
           </div>
         </div>
         <div class="info"></div>
-      </div>
+      </NavLink>
 
       {grouped.map(Subgroup)}
     </div>;

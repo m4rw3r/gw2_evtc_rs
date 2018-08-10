@@ -1,8 +1,10 @@
+import alias      from "rollup-plugin-alias";
 import babel      from "rollup-plugin-babel";
-import resolve    from "rollup-plugin-node-resolve";
+import commonjs   from "rollup-plugin-commonjs";
 import gzip       from "rollup-plugin-gzip";
-import { uglify } from "rollup-plugin-uglify";
 import replace    from "rollup-plugin-replace";
+import resolve    from "rollup-plugin-node-resolve";
+import { uglify } from "rollup-plugin-uglify";
 
 const production = process.env.NODE_ENV === "production";
 
@@ -17,6 +19,9 @@ export default {
     },
   ],
   plugins: [
+    alias({
+      react: __dirname + "/src/preact-compat-mini"
+    }),
     {
       name: "custom-plugin-svg",
       transform: (source, id) => {
@@ -60,17 +65,16 @@ export default function(props) { return ${
         ["@babel/plugin-transform-react-jsx", { "pragma": "h" }],
       ]
     }),
+    commonjs(),
     resolve({
-      module:      true,
-      jsnext:      true,
-      modulesOnly: true,
+      module: true,
+      jsnext: true,
+    }),
+    replace({
+      "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV),
     }),
   // We only perform the replace in pure production
   ].concat(production ? [
-    replace({
-      "process.env.NODE_ENV": JSON.stringify("production"),
-    }),
-  ] : []).concat([
     uglify({
       compress: {
         booleans:      true,
@@ -117,5 +121,5 @@ export default function(props) { return ${
         level: 9
       }
     })
-  ]),
+  ] : []),
 };
