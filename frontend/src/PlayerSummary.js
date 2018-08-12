@@ -10,17 +10,12 @@ import { getSkillData
        , contextData
        } from "./util";
 
-@contextData(({ match: { params: { speciesId=null } }, player, skillData }, { skills }) => {
-  console.log("Rerun", speciesId|0, player.agents.find(a => {
-    console.log(a.agent.speciesId|0, speciesId|0, (a.agent.speciesId|0) === (speciesId|0));
-    return (a.agent.speciesId|0) === (speciesId|0); }));
-
-  return ({
+@contextData(({ match: { params: { speciesId=null } }, player, skillData }, { skills }) => ({
   skills,
   skillData,
   player,
   agentData: player.agents.find(a => (a.agent.speciesId|0) === (speciesId|0))
-})})
+}))
 export class AgentSummary extends Component {
   render({ agentData, player, skills, skillData }, _, { format: { dps, damage, number, percent } }) {
     if( ! agentData) {
