@@ -4,6 +4,7 @@
         "build": "concurrently npm:build-*",
         "build-js": "rollup -c",
         "build-css": "sass src/index.sass dist/style.css --style compressed",
+        "generate": "node ./generate-buff-table.js > src/generatedData.js",
         "dist": "cross-env NODE_ENV=production npm run build",
         "watch": "concurrently npm:watch-*",
         "watch-js": "rollup -w -c",

@@ -16,15 +16,16 @@ $active:    #fff
   justify-content: center
 
   li
-    flex:            1
+    flex:    1
+    display: flex
 
     a
       background:      $inactive
       display:         flex
       align-items:     center
       justify-content: center
-      display:         flex
       padding:         1em
+      flex:            1
 
       &:hover
         cursor:     pointer
@@ -66,11 +67,27 @@ table
 
       a
         padding: 0.25em 0.5em
-        display: block
+        display: flex
+        min-height: 1.75em
+        align-items: center
+
+        span
+          margin: auto
+
+    &.secondary
+      font-size: 1rem
+
+    img
+      max-width:  1.25em
+      max-height: 1.25em
 
   .active
     color:       $body
     font-weight: bold
+
+    img
+      max-width:  1.75em
+      max-height: 1.75em
 
   img
     display:    block
@@ -80,6 +97,11 @@ table
   .subheading
     font-size: 1rem
     color:     $secondary
+
+    th,
+    td
+      a
+        min-height: 0
 
 .icon
   width:           2em

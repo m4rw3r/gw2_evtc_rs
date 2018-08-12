@@ -11,6 +11,8 @@ import { parse as parseQueryString
        } from "query-string";
 
 import Profession      from "./icons/Profession";
+import { downedIcon
+       } from "./icons";
 import { damageSeries
        , bossDmgSeries
        , fulltimeAvg
@@ -26,10 +28,8 @@ import { groupBy
        , contextData
        , professionColour
        } from "./util";
-
-const DAMAGE    = "section_damage";
-const BOONS     = "section_boons";
-const MECHANICS = "section_mechanics";
+import { buffIcons
+       } from "./generatedData";
 
 const agentName      = ({ agent: { name: a } })                 => a;
 const agentSubgroup  = ({ agent: { subgroup: a } })             => a;
@@ -89,7 +89,9 @@ const TH = ({ sort, boon, children, ...rest }) => <Route render={({ location: { 
       pathname,
       search: newSearch,
     }}>
+      <span>
       {children}
+      </span>
     </Link>
   </th>;
 }} />
@@ -181,7 +183,7 @@ export class DamageTable extends Component {
         <TH sort="wasted" title="Wasted time casting skills which got canceled">Wasted</TH>
         <TH sort="critBoss" colspan="2" title="Percentage of hits which were critical hits">Crits</TH>
         <TH sort="scholarBoss" colspan="2" title="Percentage of hits which potentially benefited from the >90% Scholar rune bonus">Scholar</TH>
-        <TH sort="downed" title="Number of times player got downed."><span class="icon death"></span></TH>
+        <TH sort="downed" title="Number of times player got downed."><img alt="Downed" src={downedIcon} /></TH>
       </tr>
       <tr class="subheading">
         <th colspan="3"></th>
@@ -245,7 +247,9 @@ export class BoonTable extends Component {
     const grouped = groupBy(sorted, ({ agent: { subgroup }}) => subgroup);
 
     const buffsSorted = Object.values(buffs).sort(buffSort);
-    const BuffHeading = ({ name, skillId }) => <TH sort="boon" boon={skillId} title={name}>{name}</TH>;
+    const BuffHeading = ({ name, skillId }) => <TH sort="boon" boon={skillId} title={name}>{
+      buffIcons[name] ? <img alt={name} src={buffIcons[name]} /> : name
+    }</TH>;
 
     return <table>
       <tr>

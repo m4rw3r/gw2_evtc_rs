@@ -6,18 +6,21 @@ import { NavLink
        , Route } from "react-router-dom";
 
 import Profession from "./icons/Profession";
-import { getSkillData
-       , contextData
+import { contextData
+       , skillIcons
+       , SkillIcon
        } from "./util";
+import { weapon1Skills
+       , skillNames
+       } from "./generatedData";
 
-@contextData(({ match: { params: { speciesId=null } }, player, skillData }, { skills }) => ({
+@contextData(({ match: { params: { speciesId=null } }, player }, { skills }) => ({
   skills,
-  skillData,
   player,
   agentData: player.agents.find(a => (a.agent.speciesId|0) === (speciesId|0))
 }))
 export class AgentSummary extends Component {
-  render({ agentData, player, skills, skillData }, _, { format: { dps, damage, number, percent } }) {
+  render({ agentData, player, skills }, _, { format: { dps, damage, number, percent } }) {
     if( ! agentData) {
       return <p>Not found</p>;
     }
@@ -25,11 +28,11 @@ export class AgentSummary extends Component {
     const { bossHits: { condi, power } } = player;
     const { agent, bossHits: { abilities } }    = agentData;
     const allBossDamage = condi.totalDamage + power.totalDamage;
-    const list = Object.keys(abilities).map(k => ({...abilities[k], name: skills[k], key: k, skillData: skillData[k|0] })).sort((a, b) => b.totalDamage - a.totalDamage);
+    const list = Object.keys(abilities).map(k => ({...abilities[k], name: skills[k], skillId: k|0 })).sort((a, b) => b.totalDamage - a.totalDamage);
 
-    const Ability = ({ name, key, totalDamage, hits, criticals, flanking, glancing, scholar, moving, interrupted, blocked, evaded, absorbed, missed, minDamage, maxDamage, skillData }) => <tr>
-      <td class="icon">{skillData ? <img src={skillData.icon} /> : null}</td>
-      <td class="name" title={key}>{name || (skillData && skillData.name) || key}</td>
+    const Ability = ({ name, skillId, totalDamage, hits, criticals, flanking, glancing, scholar, moving, interrupted, blocked, evaded, absorbed, missed, minDamage, maxDamage }) => <tr>
+      <td class="icon"><SkillIcon skillId={skillId} name={name || skillId} /></td>
+      <td class="name" title={skillId}>{name || skillId}</td>
       <td class="number">{damage(totalDamage)}</td>
       <td class="number secondary">{percent(totalDamage / allBossDamage)}</td>
       <td class="number">{number(hits)}</td>
@@ -73,12 +76,13 @@ export class AgentSummary extends Component {
   }
 }
 
-const CastSkill = ({ time, skill, quickness, canceled, duration }, d, timeDiff, formatTime) => {
-  if( ! d) {
+const CastSkill = ({ time, skill, quickness, canceled, duration }, timeDiff, formatTime) => {
+  if( ! skillIcons[skill|0]) {
     return;
   }
 
-  if(d.slot === "Weapon_1") {
+  // TODO: Add global checkbox for this setting
+  if(weapon1Skills[skill|0]) {
     return null;
   }
 
@@ -92,21 +96,21 @@ const CastSkill = ({ time, skill, quickness, canceled, duration }, d, timeDiff, 
     classNames.push("quickness");
   }
 
-  return <li class={classNames.join(" ")} title={formatTime(time) + " " + d.name}
+  return <li class={classNames.join(" ")} title={formatTime(time) + " " + skillNames[skill]}
     style={`flex-basis: ${timeDiff / 200}%`}>
-    <img src={d.icon}/>
+    <SkillIcon skillId={skill} name={skillNames[skill]} />
   </li>;
 }
 
 export class ActivationLog extends Component {
-  render({ player: { activationLog }, skillData }, _, { format: { time }}) {
+  render({ player: { activationLog } }, _, { format: { time }}) {
     const log      = [];
     let   logStart = activationLog.length > 0 ? activationLog[0].time : 0;
 
     for(let i = 0; i < activationLog.length; i++) {
       const diff = i + 1 < activationLog.length ? activationLog[i + 1].time - activationLog[i].time: 0;
 
-      log.push(CastSkill(activationLog[i], skillData[activationLog[i].skill|0], diff, time));
+      log.push(CastSkill(activationLog[i], diff, time));
     }
 
     return <div>
@@ -121,35 +125,16 @@ export class ActivationLog extends Component {
   }
 }
 
+const sortAgents = ({ agent: { name: aName, speciesId: aSpecies }},
+                    { agent: { name: bName, speciesId: bSpecies }}) =>
+  (Boolean(aSpecies) ^ Boolean(bSpecies)) ? (aSpecies|0) - (bSpecies|0) : aName.localeCompare(bName);
+
 @contextData(({ match: { params: { name } } }, { players, skills }) => ({
   player: players.find(p => p.agent.name === name),
   skills,
 }))
 export class PlayerSummary extends Component {
-  constructor() {
-    super();
-
-    this.state = {
-      skillData: {},
-    };
-  }
-  componentWillMount() {
-    this.loadSkills(this.props.player);
-  }
-  componentWillReceiveProps(props) {
-    this.loadSkills(props.player);
-  }
-  loadSkills(player) {
-    // Load all skill-icons
-    const skillIds = [].concat.apply([], player.agents.map(({ bossHits: { abilities }}) => Object.keys(abilities)))
-        .concat(player.activationLog.map(({ skill }) => skill))
-        .filter((v, i, a) => a.indexOf(v) === i);
-
-    skillIds.map(getSkillData).forEach(p => p.then(s => this.setState({
-      skillData: {...this.state.skillData, [s.id]: s},
-    })));
-  }
-  render({ player, skills, children }, { skillData }, { format: { time: formatTime } }) {
+  render({ player, skills, children }, _, { format: { time: formatTime } }) {
     if( ! player) {
       return <div>No player found</div>;
     }
@@ -165,14 +150,14 @@ export class PlayerSummary extends Component {
 
       {agents.length > 1 ?
       <ul class="agent-selection">
-        {agents.map(({ agent }) => <li>
+        {agents.slice().sort(sortAgents).map(({ agent }) => <li>
           <NavLink exact to={agent.speciesId ? `/players/${name}/agents/${agent.speciesId}` : `/players/${name}`}>
             {agent.profession !== "NonPlayableCharacter" ? <Profession class="agent-profession" profession={agent.profession} /> : null }{agent.name}
           </NavLink>
         </li>)}
       </ul> : null}
 
-      {children.map(c => cloneElement(c, { player, skillData }))}
+      {children.map(c => cloneElement(c, { player }))}
     </div>;
   }
 }
