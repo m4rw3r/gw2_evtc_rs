@@ -3,41 +3,18 @@ import { Component
        } from "preact";
 import { HashRouter
        , Link
+       , Switch
        , Route } from "react-router-dom";
 
 import PlayerList,
        { TAB_SUMMARY } from "./PlayerList";
 import Encounter     from "./Encounter";
-import Summary       from "./Summary";
-import PlayerSummary from "./PlayerSummary";
-
-// TODO: Use a fragment-router to determine what to show and which settings
 
 export class App extends Component<Data> {
-  constructor() {
-    super();
-
-    this.state = {
-      selected: TAB_SUMMARY,
-    };
-
-    this.onSelect = this.onSelect.bind(this);
-  }
   getChildContext() {
-    const { encounter, enemies } = this.props;
+    const { buffs, encounter, enemies, players, skills } = this.props;
 
-    /*
-    let lastBossActive = enemies.reduce((a, { agent: { firstAware } }) => Math.min(a, firstAware), Number.MAX_VALUE);
-
-    const bossDuration = enemies.reduce((a, { agent: { firstAware, lastAware } }) => {
-      let r = a + lastAware - firstAware - Math.max(lastBossActive - firstAware, 0);
-
-      lastBossActive = Math.max(lastAware, lastBossActive);
-
-      return r;
-    }, 0) / 1000;
-    */
-
+    // TODO: Maybe perform these calculations in the Rust code?
     let { start, end } = enemies.reduce(({ start, end }, { agent }) => ({
       start: Math.min(start, agent.firstAware),
       end:   Math.max(end, agent.diedAt || agent.lastAware),
@@ -67,18 +44,24 @@ export class App extends Component<Data> {
     const bossDps = total => number(Math.round(total / duration * 1000));
     const percent = (fraction, precision=2)  => (fraction * 100).toFixed(precision) + "%";
 
+    // TODO: Maybe perform these transforms in the Rust code? (with the exception of the formatting functions)
     return {
-      encounter: {
-        start:    encounter.logStart * 1000,
-        end:      encounter.logEnd * 1000,
-        duration: duration,
-      },
+      buffs,
       boss: {
         firstHpActivity,
         start,
         end,
         duration: bossDuration,
       },
+      encounter: {
+        ...encounter,
+        start:    encounter.logStart * 1000,
+        end:      encounter.logEnd * 1000,
+        duration: duration,
+      },
+      enemies,
+      players,
+      skills,
       format: {
         time,
         damage: number,
@@ -89,35 +72,17 @@ export class App extends Component<Data> {
       },
     };
   }
-  onSelect(name) {
-    this.setState({
-      selected: name,
-    });
-  }
-  render(data, { selected }) {
-    const { encounter, players, enemies, skills } = data;
-    const player = players.find(p => p.agent.name === selected);
+  render({ encounter, players, enemies, skills, children }) {
+    return <div class="evtc">
+      <Encounter {...encounter} enemies={enemies} />
 
-    /*j
-    const component = selected === TAB_SUMMARY
-      ? <Summary {...data} />
-      : <PlayerSummary {...data} key={player.agent.accountName} player={player} />;
-    */
-
-    return <HashRouter>
-      <div class="evtc">
-        <Encounter {...encounter} enemies={enemies} />
-
-        <div class="evtc-body">
-          <PlayerList players={players} selected={selected} onSelect={this.onSelect} />
-
-          <section class="evtc-content">
-            <Route exact path="/" render={() => <Summary {...data} />} />
-            <Route path="/player/:name" render={({ match: { params: { name } } }) => <PlayerSummary {...data} key={name} player={players.find(p => p.agent.name === name)} /> } />
-          </section>
-        </div>
+      <div class="evtc-body">
+        <PlayerList players={players} />
+        <section class="evtc-content">
+          {children}
+        </section>
       </div>
-    </HashRouter>
+    </div>
     ;
   }
 }

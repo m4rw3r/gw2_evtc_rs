@@ -9,7 +9,7 @@ import Profession from "./icons/Profession";
 export const TAB_SUMMARY = "_SUMMARY";
 
 export default class PlayerList extends Component {
-  render({ onSelect, players, selected }, _, { format: { dps } }) {
+  render({ onSelect, players }, _, { format: { dps } }) {
 
     const Player = ({ agent }) => {
       const { name
@@ -24,7 +24,7 @@ export default class PlayerList extends Component {
             , diedAt
             } = agent;
 
-      return <NavLink to={`/player/${name}`} className="player" activeClassName="active">
+      return <NavLink to={`/players/${name}`} className="player">
         <Profession class="profession" profession={profession} />
 
         <div class="name">
@@ -51,7 +51,7 @@ export default class PlayerList extends Component {
     const totalBossDamage = players.map(player => player.bossHits.power.totalDamage + player.bossHits.condi.totalDamage).reduce((a, b) => a + b, 0);
 
     return <div class="player-list">
-      <NavLink to="/" className="player" activeClassName="active">
+      <NavLink exact to="/" className="player">
         <div class="profession"></div>
         <div class="name">
           <h3>Summary</h3>

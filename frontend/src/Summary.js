@@ -2,6 +2,13 @@ import { h
        , cloneElement
        , Component
        } from "preact";
+import { Link
+       , Route
+       , NavLink
+       } from "react-router-dom";
+import { parse as parseQueryString
+       , stringify as stringifyQueryString
+       } from "query-string";
 
 import Profession      from "./icons/Profession";
 import { damageSeries
@@ -15,7 +22,10 @@ import { damageSeries
        , GroupedGraphs
        , ResponsiveGraph
        } from "./Graph";
-import { groupBy }     from "./util";
+import { groupBy
+       , contextData
+       , professionColour
+       } from "./util";
 
 const DAMAGE    = "section_damage";
 const BOONS     = "section_boons";
@@ -35,110 +45,56 @@ const downed         = ({ series }) => series.filter(e => e.downed);
 const wastedSkills   = ({ activationLog }) => activationLog.filter(e => e.canceled);
 const wastedTime     = (player)            => wastedSkills(player).reduce((a, e) => a + e.duration, 0);
 
-const reverseSort = (func) => {
-  let reversed = (a, b) => func(b, a);
-
-  reversed.func = func;
-
-  return reversed;
+const SORT_FUNCS = {
+  name: (a, b) => agentName(a).localeCompare(agentName(b)),
+  group: (a, b) => agentSubgroup(a).localeCompare(agentSubgroup(b)),
+  bossDps: (a, b) => totalDamage(bossHits(b)) - totalDamage(bossHits(a)),
+  bossPowerDps: (a, b) => powerDamage(bossHits(b)) - powerDamage(bossHits(a)),
+  bossCondiDps: (a, b) => condiDamage(bossHits(b)) - condiDamage(bossHits(a)),
+  dps: (a, b) => totalDamage(hits(b)) - totalDamage(hits(a)),
+  powerDps: (a, b) => powerDamage(hits(b)) - powerDamage(hits(a)),
+  condiDps: (a, b) => condiDamage(hits(b)) - condiDamage(hits(a)),
+  incoming: (a, b) => incomingDamage(b) - incomingDamage(a),
+  wasted: (a, b) => wastedTime(b) - wastedTime(a),
+  critBoss: (a, b) => critRate(bossHits(b)) - critRate(bossHits(a)),
+  crit: (a, b) => critRate(hits(b)) - critRate(hits(a)),
+  scholar: (a, b) => scholarUptime(hits(b)) - scholarUptime(hits(a)),
+  scholarBoss: (a, b) => scholarUptime(bossHits(b)) - scholarUptime(bossHits(a)),
+  downed: (a, b) => downed(b).length - downed(a).length,
 };
-const nameSort        = (a, b) => agentName(a).localeCompare(agentName(b));
-const groupSort       = (a, b) => agentSubgroup(a).localeCompare(agentSubgroup(b));
-const bossDpsSort     = (a, b) => totalDamage(bossHits(b)) - totalDamage(bossHits(a));
-const bossPowerDps    = (a, b) => powerDamage(bossHits(b)) - powerDamage(bossHits(a));
-const bossCondiDps    = (a, b) => condiDamage(bossHits(b)) - condiDamage(bossHits(a));
-const dpsSort         = (a, b) => totalDamage(hits(b)) - totalDamage(hits(a));
-const powerDpsSort    = (a, b) => powerDamage(hits(b)) - powerDamage(hits(a));
-const condiDpsSort    = (a, b) => condiDamage(hits(b)) - condiDamage(hits(a));
-const incomingSort    = (a, b) => incomingDamage(b) - incomingDamage(a);
-const wastedSort      = (a, b) => wastedTime(b) - wastedTime(a);
-const critBossSort    = (a, b) => critRate(bossHits(b)) - critRate(bossHits(a));
-const critSort        = (a, b) => critRate(hits(b)) - critRate(hits(a));
-const scholarSort     = (a, b) => scholarUptime(hits(b)) - scholarUptime(hits(a));
-const scholarBossSort = (a, b) => scholarUptime(bossHits(b)) - scholarUptime(bossHits(a));
-const downedSort      = (a, b) => downed(b).length - downed(a).length;
+
+const boonSort = skillId => ({ buffs: a }, { buffs: b }) => (b[skillId] || EMPTY_BUFF).uptime - (a[skillId] || EMPTY_BUFF).uptime;
+
+const sortFromParams = ({ sort="name", reverse=false, boon }) => {
+  const sortFn = sort === "boon" ? boonSort(boon) : (SORT_FUNCS[sort] || SORT_FUNCS.name);
+
+  if(reverse) {
+    return (a, b) => sortFn(b, a);
+  }
+  
+  return sortFn;
+}
+
+const TH = ({ sort, boon, children, ...rest }) => <Route render={({ location: { pathname, search }}) => {
+  const { sort: oldSort="name", reverse: oldReverse=false, boon: oldBoon } = parseQueryString(search);
+  const match = oldSort === sort && (oldBoon|0) === (boon|0);
+  const newSearch = stringifyQueryString({
+    sort:    sort !== "name" ? sort : undefined,
+    reverse: match && !oldReverse ? true : undefined,
+    boon:    boon || undefined,
+  });
+
+  return <th className={`sortable${match ? " active" : ""}`} {...rest}>
+    <Link to={{
+      pathname,
+      search: newSearch,
+    }}>
+      {children}
+    </Link>
+  </th>;
+}} />
 
 const seconds = time => (time / 1000).toFixed(2);
-
-const professionColour = ({ profession }) => {
-  switch(profession) {
-  case "Dragonhunter":
-  case "Firebrand":
-  case "Guardian":
-    return "#72C1D9";
-  case "Revenant":
-  case "Herald":
-  case "Renegade":
-    return "#D16E5A";
-  case "Warrior":
-  case "Spellbreaker":
-  case "Berserker":
-    return "#FFD166";
-  case "Engineer":
-  case "Scrapper":
-  case "Holosmith":
-    return "#D09C59";
-  case "Ranger":
-  case "Druid":
-  case "Soulbeast":
-    return "#8CDC82";
-  case "Thief":
-  case "Daredevil":
-  case "Deadeye":
-    return "#C08F95";
-  case "Elementalist":
-  case "Tempest":
-  case "Weaver":
-    return "#F68A87";
-  case "Mesmer":
-  case "Chronomancer":
-  case "Mirage":
-    return "#B679D5";
-  case "Necromancer":
-  case "Reaper":
-  case "Scourge":
-    return "#52A76F";
-  default:
-    return "#BBBBBB";
-  }
-}
-
-class SortableComponent extends Component {
-  constructor(props) {
-    super(props);
-
-    this.state = {
-      sort: bossDpsSort,
-    };
-  }
-
-  setSort(func) {
-    if(this.state.sort === func) {
-      this.setState({
-        sort: reverseSort(func),
-      });
-    }
-    else {
-      this.setState({
-        sort: func,
-      });
-    }
-  }
-
-  th(sort) {
-    return ({sortFn, children, ...rest }) => <th {...rest}
-      class={[sort, sort.func].indexOf(sortFn) !== -1 ? "selected sortable" : "sortable"}
-      onClick={() => this.setSort(sortFn)}>{children}</th>;
-  }
-
-  render({ children }, { sort }) {
-    if(children.length !== 1) {
-       console.error("<SortableComponent /> expects a single child only.");
-    }
-
-    return children.map(c => cloneElement(c, { sort, TH: this.th(sort) }))[0];
-  }
-}
 
 class PlayerDamageRow extends Component {
   render({ agent: { name, profession, subgroup }, bossHits, hits, incomingDamage: { total: { totalDamage: incomingDamage } }, activationLog, series }, _, { format: { bossDps, dps, percent, damage, number } }) {
@@ -163,8 +119,9 @@ class PlayerDamageRow extends Component {
   }
 }
 
-class DamageTable extends SortableComponent {
-  render({ TH, players, sort }, _, { format: { bossDps, dps, damage } }) {
+@contextData(({ location: { search } }, { players }) => ({ players, sort: sortFromParams(parseQueryString(search)) }))
+export class DamageTable extends Component {
+  render({ players, sort }, _, { format: { bossDps, dps, damage } }) {
     const groupTotal = agents => {
       const totalBossDamage = agents.reduce((b, a) => totalDamage(a.bossHits) + b, 0);
       const powerBossDamage = agents.reduce((b, a) => a.bossHits.power.totalDamage + b, 0);
@@ -216,30 +173,30 @@ class DamageTable extends SortableComponent {
     return <table>
       <tr>
         <th></th>
-        <TH sortFn={nameSort} title="Character name">Name</TH>
-        <TH sortFn={groupSort} title="Subgroup">Group</TH>
-        <TH sortFn={bossDpsSort} colspan="3">Boss DPS</TH>
-        <TH sortFn={dpsSort} colspan="3">All DPS</TH>
-        <TH sortFn={incomingSort} title="Incoming damage">Incoming</TH>
-        <TH sortFn={wastedSort} title="Wasted time casting skills which got canceled">Wasted</TH>
-        <TH sortFn={critBossSort} colspan="2" title="Percentage of hits which were critical hits">Crits</TH>
-        <TH sortFn={scholarBossSort} colspan="2" title="Percentage of hits which potentially benefited from the >90% Scholar rune bonus">Scholar</TH>
-        <TH sortFn={downedSort} title="Number of times player got downed."><span class="icon death"></span></TH>
+        <TH sort="name" title="Character name">Name</TH>
+        <TH sort="group" title="Subgroup">Group</TH>
+        <TH sort="bossDps" colspan="3">Boss DPS</TH>
+        <TH sort="dps" colspan="3">All DPS</TH>
+        <TH sort="incoming" title="Incoming damage">Incoming</TH>
+        <TH sort="wasted" title="Wasted time casting skills which got canceled">Wasted</TH>
+        <TH sort="critBoss" colspan="2" title="Percentage of hits which were critical hits">Crits</TH>
+        <TH sort="scholarBoss" colspan="2" title="Percentage of hits which potentially benefited from the >90% Scholar rune bonus">Scholar</TH>
+        <TH sort="downed" title="Number of times player got downed."><span class="icon death"></span></TH>
       </tr>
       <tr class="subheading">
         <th colspan="3"></th>
-        <TH sortFn={bossDpsSort}>All</TH>
-        <TH sortFn={bossPowerDps}>Power</TH>
-        <TH sortFn={bossCondiDps}>Condi</TH>
-        <TH sortFn={dpsSort}>All</TH>
-        <TH sortFn={powerDpsSort}>Power</TH>
-        <TH sortFn={condiDpsSort}>Condi</TH>
+        <TH sort="bossDps">All</TH>
+        <TH sort="bossPowerDps">Power</TH>
+        <TH sort="bossCondiDps">Condi</TH>
+        <TH sort="dps">All</TH>
+        <TH sort="powerDps">Power</TH>
+        <TH sort="condiDps">Condi</TH>
         <th></th>
         <th></th>
-        <TH sortFn={critBossSort}>Boss</TH>
-        <TH sortFn={critSort}>All</TH>
-        <TH sortFn={scholarBossSort}>Boss</TH>
-        <TH sortFn={scholarSort}>All</TH>
+        <TH sort="critBoss">Boss</TH>
+        <TH sort="crit">All</TH>
+        <TH sort="scholarBoss">Boss</TH>
+        <TH sort="scholar">All</TH>
         <th></th>
       </tr>
       {sorted.map(p => <PlayerDamageRow {...p} />)}
@@ -281,19 +238,20 @@ class PlayerBoonRow extends Component {
 
 const buffSort = ({ name: a }, { name: b }) => a.localeCompare(b);
 
-class BoonTable extends SortableComponent {
-  render({ TH, sort, buffs, players }) {
+@contextData(({ location: { search } }, { players, buffs }) => ({ buffs, players, sort: sortFromParams(parseQueryString(search)) }))
+export class BoonTable extends Component {
+  render({ sort, buffs, players }) {
     const sorted  = players.slice().sort(sort);
     const grouped = groupBy(sorted, ({ agent: { subgroup }}) => subgroup);
 
     const buffsSorted = Object.values(buffs).sort(buffSort);
-    const BuffHeading = ({ name, skillId }) => <TH sortFn={() => 0} title={name}>{name}</TH>;
+    const BuffHeading = ({ name, skillId }) => <TH sort="boon" boon={skillId} title={name}>{name}</TH>;
 
     return <table>
       <tr>
         <th></th>
-        <TH sortFn={nameSort} title="Character name">Name</TH>
-        <TH sortFn={groupSort} title="Subgroup">Group</TH>
+        <TH sort="name" title="Character name">Name</TH>
+        <TH sort="group" title="Subgroup">Group</TH>
         {buffsSorted.map(BuffHeading)}
       </tr>
       {sorted.map(p => <PlayerBoonRow {...p} buffOrder={buffsSorted} />)}
@@ -301,29 +259,9 @@ class BoonTable extends SortableComponent {
   }
 }
 
-export default class Summary extends Component {
-  constructor(props) {
-    super(props);
-
-    this.state = {
-      section: DAMAGE,
-    };
-  }
-
-  render({ buffs, encounter, players, enemies }, { section }, { format: { damage } }) {
-    let body = null;
-
-    switch(section) {
-    case DAMAGE:
-      body = <DamageTable players={players} />;
-      break;
-    case BOONS:
-      body = <BoonTable players={players} buffs={buffs} />;
-      break;
-    default:
-      body = <p>Not implemented</p>;
-    }
-
+@contextData(({ location: { search } }, { encounter, enemies, players }) => ({ encounter, enemies, players, search }))
+export class Summary extends Component {
+  render({ encounter, players, enemies, search, children }, _, { format: { damage } }) {
     return <div class="summary">
       <ResponsiveGraph class="graph">
         <Graph start={encounter.seriesStart / 1000} end={encounter.seriesEnd / 1000} width="1500" height="300">
@@ -336,14 +274,14 @@ export default class Summary extends Component {
           <TimeAxis class="time-axis" />
         </Graph>
       </ResponsiveGraph>
+
       <ul class="section-list">
-        <li class={section === DAMAGE ? "selected" : null} onClick={() => this.setState({ section: DAMAGE })}>Damage</li>
-        <li class={section === BOONS ? "selected" : null} onClick={() => this.setState({ section: BOONS })}>Boons</li>
-        <li class={section === MECHANICS ? "selected" : null} onClick={() => this.setState({ section: MECHANICS })}>Mechanics</li>
+        <li><NavLink exact to={{ pathname: "/", search }}>Damage</NavLink></li>
+        <li><NavLink to={{ pathname: "/boons", search }}>Boons</NavLink></li>
+        <li><NavLink to={{ pathname: "/mechanics", search }}>Mechanics</NavLink></li>
       </ul>
-      <SortableComponent>
-        {body}
-      </SortableComponent>
+
+      {children}
     </div>;
   }
 }

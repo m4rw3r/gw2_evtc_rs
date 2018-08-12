@@ -17,18 +17,21 @@ $active:    #fff
 
   li
     flex:            1
-    display:         flex
-    align-items:     center
-    padding:         1em
-    justify-content: center
-    background:      $inactive
 
-    &:hover
-      cursor:     pointer
-      background: $active
+    a
+      background:      $inactive
+      display:         flex
+      align-items:     center
+      justify-content: center
+      display:         flex
+      padding:         1em
 
-    &.selected
-      background: $active
+      &:hover
+        cursor:     pointer
+        background: $active
+
+      &.active
+        background: $active
 
 
 a
@@ -58,6 +61,16 @@ table
       text-align: right
     &.secondary
       font-size: 1rem
+    &.sortable
+      padding: 0
+
+      a
+        padding: 0.25em 0.5em
+        display: block
+
+  .active
+    color:       $body
+    font-weight: bold
 
   img
     display:    block

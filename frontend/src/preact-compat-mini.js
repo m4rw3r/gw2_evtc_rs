@@ -15,11 +15,18 @@ options.vnode = vnode => {
   if(children && children.length === 1 && typeof children[0] === "function") {
     vnode.children = children[0];
   }
-}
+
+  vnode.props = vnode.attributes;
+
+  oldVnode && oldVnode(vnode);
+};
+
+const isValidElement = el => typeof el === "object" && el.nodeName;
 
 const Children = {
-  only:  c => Array.isArray(c) ? c[0] : c,
-  count: c => c.length,
+  only:    c => Array.isArray(c) ? c[0] : c,
+  count:   c => c.length,
+  forEach: (c, fn) => c.forEach(fn),
 };
 
 export default {
@@ -28,6 +35,7 @@ export default {
   cloneElement,
   Component,
   Children,
+  isValidElement,
   render,
   rerender,
   options,
@@ -39,6 +47,7 @@ export{
   cloneElement,
   Component,
   Children,
+  isValidElement,
   render,
   rerender,
   options,

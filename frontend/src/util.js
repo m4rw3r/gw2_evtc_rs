@@ -1,3 +1,49 @@
+import { h
+       , Component
+       } from "preact";
+
+export const professionColour = ({ profession }) => {
+  switch(profession) {
+  case "Dragonhunter":
+  case "Firebrand":
+  case "Guardian":
+    return "#72C1D9";
+  case "Revenant":
+  case "Herald":
+  case "Renegade":
+    return "#D16E5A";
+  case "Warrior":
+  case "Spellbreaker":
+  case "Berserker":
+    return "#FFD166";
+  case "Engineer":
+  case "Scrapper":
+  case "Holosmith":
+    return "#D09C59";
+  case "Ranger":
+  case "Druid":
+  case "Soulbeast":
+    return "#8CDC82";
+  case "Thief":
+  case "Daredevil":
+  case "Deadeye":
+    return "#C08F95";
+  case "Elementalist":
+  case "Tempest":
+  case "Weaver":
+    return "#F68A87";
+  case "Mesmer":
+  case "Chronomancer":
+  case "Mirage":
+    return "#B679D5";
+  case "Necromancer":
+  case "Reaper":
+  case "Scourge":
+    return "#52A76F";
+  default:
+    return "#BBBBBB";
+  }
+}
 
 type Skill = {
   name: string,
@@ -106,3 +152,11 @@ export const groupBy = (items, getKey) => {
 
   return Object.keys(grouped).sort().map(key => grouped[key]);
 };
+
+export function contextData<P, Q, C>(fn: (props: P, context: C) => Q): (component: Component<Q, C>) => Component<P, C> {
+  return (component: Context<Q, C>) => class ContextData extends Component {
+    render(props: P, _, ctx: C) {
+      return h(component, fn(props, ctx), ...props.children);
+    }
+  }
+}

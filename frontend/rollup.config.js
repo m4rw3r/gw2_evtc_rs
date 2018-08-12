@@ -62,6 +62,7 @@ export default function(props) { return ${
       ],
       plugins: [
         ["@babel/plugin-syntax-jsx"],
+        ["@babel/plugin-proposal-decorators", { legacy: true }],
         ["@babel/plugin-transform-react-jsx", { "pragma": "h" }],
       ]
     }),
