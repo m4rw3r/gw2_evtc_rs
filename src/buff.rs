@@ -491,7 +491,8 @@ $visibility mod $module {
             self.map.iter().filter(|(_, v)| v.uptime() > 0).map(|(&k, v)| (k, BuffSnapshot {
                 stacks:    v.stacks(),
                 sum:       v.sum(),
-                uptime:    v.uptime(),
+                // Subtract the current sum from the applied uptime
+                uptime:    v.uptime().saturating_sub(v.sum()),
                 overstack: v.overstack(),
                 stripped:  v.stripped(),
             }))
